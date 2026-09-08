@@ -53,7 +53,7 @@ class MonitorsTable
                     ->action(function (Monitor $record): void {
                         CheckMonitor::dispatch($record);
                     })
-                    ->successNotificationTitle('Check accodato'),
+                    ->successNotificationTitle('Check richiesto'),
                 EditAction::make(),
             ])
             ->toolbarActions([

@@ -44,6 +44,7 @@ class MonitorForm
                 TextInput::make('timeout_seconds')
                     ->numeric()
                     ->minValue(1)
+                    ->maxValue(30)
                     ->default(10)
                     ->required(),
                 Toggle::make('is_active')
