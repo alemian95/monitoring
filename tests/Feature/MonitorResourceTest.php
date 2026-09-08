@@ -7,6 +7,7 @@ use App\Jobs\CheckMonitor;
 use App\Models\Monitor;
 use App\Models\User;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Route;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -63,4 +64,10 @@ it('permette a un utente autenticato di accedere alla pagina dei monitor via HTT
 
 it('non espone una rotta di registrazione nel panel admin', function () {
     $this->get('/admin/register')->assertNotFound();
+});
+
+it('non espone una rotta di registrazione globale, come quella montata da uno starter kit', function () {
+    expect(Route::has('register'))->toBeFalse();
+
+    $this->get('/register')->assertNotFound();
 });
