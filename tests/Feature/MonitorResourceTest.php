@@ -35,7 +35,12 @@ it('mostra port solo per tcp ed expected_status solo per http', function () {
         ->assertFormFieldHidden('port');
 });
 
-it('accoda il check invece di eseguirlo', function () {
+it('rende il campo type reattivo lato client con wire:model.live', function () {
+    Livewire::test(CreateMonitor::class)
+        ->assertSeeHtml('wire:model.live="data.type"');
+});
+
+it('accoda il check per il monitor corretto invece di eseguirlo', function () {
     Queue::fake();
     $monitor = Monitor::factory()->create();
 
@@ -43,9 +48,19 @@ it('accoda il check invece di eseguirlo', function () {
         ->callTableAction('checkNow', $monitor)
         ->assertHasNoTableActionErrors();
 
-    Queue::assertPushed(CheckMonitor::class);
+    Queue::assertPushed(CheckMonitor::class, fn (CheckMonitor $job): bool => $job->monitor->is($monitor));
 });
 
-it('permette a un utente autenticato di accedere alla pagina dei monitor via HTTP', function () {
-    $this->get('/admin/monitors')->assertSuccessful();
+it('permette a un utente autenticato di accedere alla pagina dei monitor via HTTP e mostra lo stato mai controllato', function () {
+    Monitor::factory()->create(['is_up' => null]);
+    Monitor::factory()->create(['is_up' => true]);
+    Monitor::factory()->create(['is_up' => false]);
+
+    $this->get('/admin/monitors')
+        ->assertSuccessful()
+        ->assertSee('mai controllato');
+});
+
+it('non espone una rotta di registrazione nel panel admin', function () {
+    $this->get('/admin/register')->assertNotFound();
 });

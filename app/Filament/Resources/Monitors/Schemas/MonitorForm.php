@@ -52,8 +52,10 @@ class MonitorForm
     }
 
     /**
-     * Il campo `type` può contenere sia l'enum (record già castato) sia la sua
-     * stringa (stato appena selezionato nel Select): normalizza il confronto.
+     * `options(MonitorType::class)` registra un EnumStateCast sul Select: lo
+     * stato di `type` è quindi sempre un'istanza di `MonitorType`, sia in
+     * creazione sia in modifica. `Get::enum()` normalizza comunque anche
+     * l'eventuale forma stringa, a scopo difensivo.
      */
     private static function isType(Get $get, MonitorType $type): bool
     {
