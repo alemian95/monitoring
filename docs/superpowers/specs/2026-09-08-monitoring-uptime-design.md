@@ -193,6 +193,22 @@ sono più facili da seguire di una catena di eventi.
   `report()`ata. Lo scarto silenzioso richiede `public bool
   $deleteWhenMissingModels = true;` sul job, impostato esplicitamente su
   `CheckMonitor`.
+- **Solo un fallimento del probe significa "il target e' giu'".** `failed()`
+  viene invocato per qualsiasi fallimento definitivo, incluse le eccezioni di
+  infrastruttura (`QueryException` su lock SQLite, timeout del worker,
+  `MaxAttemptsExceededException`). Trattarle come "giu'" produrrebbe un falso
+  alert con dentro dettagli interni, seguito da un falso recovery. Quindi solo
+  `MonitorCheckFailed` e `ConnectionException` toccano `is_up`; il resto viene
+  `report()`ato e il monitor riprogrammato senza allertare.
+- **Limite accertato, non aggirabile nel codice:** se il worker viene ucciso o
+  va in timeout durante il quarto tentativo, il framework rimpiazza
+  l'eccezione del probe con una sintetica (`TimeoutExceededException` dal
+  gestore `SIGALRM`, o `MaxAttemptsExceededException` dopo `retry_after`).
+  `failed()` non puo' distinguere quel caso, quindi lo classifica come
+  infrastruttura: un target realmente giu' allerta **un intervallo piu'
+  tardi**, non mai. L'alert e' ritardato, non perso. Il caso resta silenzioso
+  solo se lo stesso guasto di infrastruttura si ripete a ogni ciclo, con
+  `failed_jobs` e le eccezioni `report()`ate come unico segnale.
 
 ## Testing
 
