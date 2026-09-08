@@ -12,4 +12,6 @@ Artisan::command('inspire', function () {
 
 Schedule::call(function (): void {
     Monitor::due()->each(fn (Monitor $monitor) => CheckMonitor::dispatch($monitor));
-})->everyMinute()->name('dispatch-monitor-checks')->withoutOverlapping();
+})->everyMinute()->name('dispatch-monitor-checks')->withoutOverlapping(2);
+
+Schedule::command('queue:prune-failed --hours=168')->daily();
