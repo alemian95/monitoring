@@ -187,9 +187,12 @@ sono più facili da seguire di una catena di eventi.
 - Il messaggio Discord contiene nome, target e motivo del fallimento. Non
   contiene header, body della risposta o credenziali: il `target` è già in
   chiaro nel canale, il resto no.
-- Se un monitor viene cancellato mentre un suo job è in retry, Laravel scarta
-  il job (`SerializesModels` + model mancante). Comportamento corretto,
-  nessun codice necessario.
+- Se un monitor viene cancellato mentre un suo job è in retry, Laravel di
+  default **non** scarta il job: `CallQueuedHandler::handleModelNotFound()`
+  chiama `$job->fail($e)`, che lascia una riga in `failed_jobs` e un'eccezione
+  `report()`ata. Lo scarto silenzioso richiede `public bool
+  $deleteWhenMissingModels = true;` sul job, impostato esplicitamente su
+  `CheckMonitor`.
 
 ## Testing
 
