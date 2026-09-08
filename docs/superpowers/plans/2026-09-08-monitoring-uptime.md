@@ -59,7 +59,7 @@ Confine centrale: `MonitorProbe` sa parlare in rete ma non sa cosa sia un alert;
 
 ```bash
 php artisan make:model Monitor -mf --no-interaction
-php artisan make:class Enums/MonitorType --no-interaction
+php artisan make:enum MonitorType --string --no-interaction
 ```
 
 - [ ] **Step 2: Scrivi l'enum**
