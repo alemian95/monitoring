@@ -8,6 +8,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Spatie\DiscordAlerts\Jobs\SendToDiscordChannelJob;
 
@@ -140,4 +141,32 @@ it('un fallimento di infrastruttura non tocca is_up (partendo da mai controllato
 
     Queue::assertNotPushed(SendToDiscordChannelJob::class);
     expect($monitor->refresh()->is_up)->toBeNull();
+});
+
+it('non fa fallire il job quando il webhook Discord non e configurato', function () {
+    config(['discord-alerts.webhook_urls.default' => null]);
+    Log::spy();
+    $monitor = Monitor::factory()->create(['is_up' => true]);
+
+    (new CheckMonitor($monitor))->failed(new MonitorCheckFailed('HTTP 500, atteso 200'));
+
+    Queue::assertNotPushed(SendToDiscordChannelJob::class);
+    Log::shouldHaveReceived('warning')->once();
+
+    $monitor->refresh();
+    expect($monitor->is_up)->toBeFalse()
+        ->and($monitor->last_failure_reason)->toBe('HTTP 500, atteso 200');
+});
+
+it('non fa fallire il recovery quando il webhook Discord non e configurato', function () {
+    config(['discord-alerts.webhook_urls.default' => null]);
+    Log::spy();
+    $monitor = Monitor::factory()->create(['is_up' => false]);
+    $this->mock(MonitorProbe::class)->shouldReceive('check')->once();
+
+    (new CheckMonitor($monitor))->handle(app(MonitorProbe::class));
+
+    Queue::assertNotPushed(SendToDiscordChannelJob::class);
+    Log::shouldHaveReceived('warning')->once();
+    expect($monitor->refresh()->is_up)->toBeTrue();
 });

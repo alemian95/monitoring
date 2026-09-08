@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Log;
 use Spatie\DiscordAlerts\Facades\DiscordAlert;
 use Throwable;
 
@@ -56,7 +57,7 @@ class CheckMonitor implements ShouldBeUnique, ShouldQueue
         ]);
 
         if ($wasDown) {
-            DiscordAlert::message("✅ **{$this->monitor->name}** è tornato su — {$this->monitor->target}");
+            $this->alert("✅ **{$this->monitor->name}** è tornato su — {$this->monitor->target}");
         }
     }
 
@@ -96,9 +97,33 @@ class CheckMonitor implements ShouldBeUnique, ShouldQueue
         ]);
 
         if ($wasUp) {
-            DiscordAlert::message(
+            $this->alert(
                 "🔴 **{$this->monitor->name}** è giù — {$this->monitor->target}".PHP_EOL.$exception->getMessage()
             );
         }
+    }
+
+    /**
+     * Manda l'alert su Discord, se c'è un canale dove mandarlo.
+     *
+     * Senza webhook configurato `DiscordAlert::message()` lancerebbe
+     * `WebhookDoesNotExist`, facendo fallire un job il cui lavoro vero — la
+     * scrittura dello stato del monitor — è già andato a buon fine. La
+     * guardia evita il fallimento ma non il silenzio: un webhook mancante
+     * resta visibile nei log, perché in un sistema d'allerta un canale
+     * scollegato è esattamente ciò che non deve passare inosservato.
+     */
+    private function alert(string $message): void
+    {
+        if (blank(config('discord-alerts.webhook_urls.default'))) {
+            Log::warning('Alert non inviato: webhook Discord non configurato.', [
+                'monitor' => $this->monitor->name,
+                'message' => $message,
+            ]);
+
+            return;
+        }
+
+        DiscordAlert::message($message);
     }
 }
