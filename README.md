@@ -4,7 +4,19 @@ Controlla domini (HTTP status) e VPS (porta TCP) su un intervallo per-target e
 avvisa un canale Discord quando un target è giù, con recovery quando torna su.
 Gestione dei target via Filament (`/admin`).
 
-Per girare davvero servono due processi, oltre all'app:
+## In sviluppo
+
+```bash
+php artisan dev
+```
+
+Avvia tutto quello che serve in un colpo: scheduler, queue worker, server e
+log. Lo scheduler e' registrato in `AppServiceProvider::boot()`, perche' senza
+di lui nessun check parte.
+
+## In produzione
+
+Servono due processi, oltre all'app:
 
 - una entry cron che invochi `php artisan schedule:run` ogni minuto;
 - un `php artisan queue:work` persistente (es. Supervisor), che esegue i check e i retry.
