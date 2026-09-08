@@ -202,8 +202,12 @@ Due test Pest, non una suite.
    nulla.
 
 Il secondo è quello che conta: protegge la regola anti-spam, che è la parte
-che si rompe silenziosamente in un refactor. Il webhook Discord va mockato
-(`Http::fake()`), mai chiamato davvero nei test.
+che si rompe silenziosamente in un refactor.
+
+`DiscordAlert::message()` non fa una richiesta HTTP diretta: dispatcha un
+`Spatie\DiscordAlerts\Jobs\SendToDiscordChannelJob`. Nei test l'asserzione
+corretta è quindi `Queue::assertPushed(SendToDiscordChannelJob::class)`, non
+`Http::assertSent()`. Il webhook non viene mai chiamato davvero.
 
 ## Note operative
 
