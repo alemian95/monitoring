@@ -45,3 +45,7 @@ it('accoda il check invece di eseguirlo', function () {
 
     Queue::assertPushed(CheckMonitor::class);
 });
+
+it('permette a un utente autenticato di accedere alla pagina dei monitor via HTTP', function () {
+    $this->get('/admin/monitors')->assertSuccessful();
+});
