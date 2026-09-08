@@ -2,11 +2,13 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\MonitorCheckFailed;
 use App\Models\Monitor;
 use App\Support\MonitorProbe;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Http\Client\ConnectionException;
 use Spatie\DiscordAlerts\Facades\DiscordAlert;
 use Throwable;
 
@@ -25,6 +27,13 @@ class CheckMonitor implements ShouldBeUnique, ShouldQueue
      * ri-dispatcha lo stesso monitor mentre è ancora in ritenta.
      */
     public int $uniqueFor = 300;
+
+    /**
+     * Se il monitor viene cancellato mentre il job è in retry, il job va
+     * scartato invece di finire in `failed_jobs`: non c'è più nulla da
+     * segnare come giù.
+     */
+    public bool $deleteWhenMissingModels = true;
 
     public function __construct(public Monitor $monitor) {}
 
@@ -53,21 +62,42 @@ class CheckMonitor implements ShouldBeUnique, ShouldQueue
 
     /**
      * Invocato dopo l'ultimo tentativo fallito: è qui che parte l'alert.
+     *
+     * Solo un fallimento del probe (`MonitorCheckFailed` o
+     * `ConnectionException`, quest'ultima per timeout/DNS lasciata propagare
+     * dal probe) significa "il target è giù". Qualunque altra eccezione
+     * terminale — lock del database, un `DiscordAlert::message()` che lancia
+     * nel ramo di recovery, un timeout del worker, troppi tentativi — è un
+     * problema di infrastruttura, non del target: non deve toccare `is_up`
+     * né generare un falso allarme (seguito, al ciclo dopo, da un falso
+     * recovery).
      */
     public function failed(?Throwable $exception): void
     {
+        if (! $exception instanceof MonitorCheckFailed && ! $exception instanceof ConnectionException) {
+            if ($exception) {
+                report($exception);
+            }
+
+            $this->monitor->update([
+                'next_check_at' => now()->addMinutes($this->monitor->interval_minutes),
+            ]);
+
+            return;
+        }
+
         $wasUp = $this->monitor->is_up !== false;
 
         $this->monitor->update([
             'is_up' => false,
-            'last_failure_reason' => $exception?->getMessage(),
+            'last_failure_reason' => $exception->getMessage(),
             'last_checked_at' => now(),
             'next_check_at' => now()->addMinutes($this->monitor->interval_minutes),
         ]);
 
         if ($wasUp) {
             DiscordAlert::message(
-                "🔴 **{$this->monitor->name}** è giù — {$this->monitor->target}".PHP_EOL.$exception?->getMessage()
+                "🔴 **{$this->monitor->name}** è giù — {$this->monitor->target}".PHP_EOL.$exception->getMessage()
             );
         }
     }

@@ -4,6 +4,10 @@ use App\Exceptions\MonitorCheckFailed;
 use App\Jobs\CheckMonitor;
 use App\Models\Monitor;
 use App\Support\MonitorProbe;
+use Illuminate\Database\QueryException;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Queue\TimeoutExceededException;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Queue;
 use Spatie\DiscordAlerts\Jobs\SendToDiscordChannelJob;
 
@@ -83,4 +87,57 @@ it('allerta al primo fallimento di un monitor mai controllato', function () {
     (new CheckMonitor($monitor))->failed(new MonitorCheckFailed('giù'));
 
     Queue::assertPushed(SendToDiscordChannelJob::class);
+});
+
+it(
+    "protegge il contratto di retry del design: 3 retry a 20 secondi tengono l'alert entro ~60s da un nginx reload",
+    function () {
+        $job = new CheckMonitor(Monitor::factory()->create());
+
+        expect($job->tries)->toBe(4)
+            ->and($job->backoff)->toBe(20);
+    }
+);
+
+it('un ConnectionException del probe (timeout/DNS) allerta e segna il monitor giù, come MonitorCheckFailed', function () {
+    $monitor = Monitor::factory()->create(['is_up' => true]);
+
+    (new CheckMonitor($monitor))->failed(new ConnectionException('Connection timed out'));
+
+    Queue::assertPushed(SendToDiscordChannelJob::class);
+    expect($monitor->refresh()->is_up)->toBeFalse();
+});
+
+it('un fallimento di infrastruttura non tocca is_up (partendo da su) e non allerta Discord', function () {
+    Exceptions::fake();
+
+    $monitor = Monitor::factory()->create(['is_up' => true, 'last_failure_reason' => null]);
+    $exception = new QueryException(
+        'sqlite',
+        'select * from monitors',
+        [],
+        new PDOException('database is locked'),
+    );
+
+    (new CheckMonitor($monitor))->failed($exception);
+
+    Queue::assertNotPushed(SendToDiscordChannelJob::class);
+
+    $monitor->refresh();
+    expect($monitor->is_up)->toBeTrue()
+        ->and($monitor->last_failure_reason)->toBeNull()
+        ->and($monitor->next_check_at)->not->toBeNull();
+
+    Exceptions::assertReported($exception::class);
+});
+
+it('un fallimento di infrastruttura non tocca is_up (partendo da mai controllato) e non allerta Discord', function () {
+    Exceptions::fake();
+
+    $monitor = Monitor::factory()->create(['is_up' => null]);
+
+    (new CheckMonitor($monitor))->failed(new TimeoutExceededException('CheckMonitor has timed out.'));
+
+    Queue::assertNotPushed(SendToDiscordChannelJob::class);
+    expect($monitor->refresh()->is_up)->toBeNull();
 });
