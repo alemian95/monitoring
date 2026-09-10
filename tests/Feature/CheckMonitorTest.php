@@ -2,6 +2,7 @@
 
 use App\Exceptions\MonitorCheckFailed;
 use App\Jobs\CheckMonitor;
+use App\Jobs\SendDiscordAlert;
 use App\Models\Monitor;
 use App\Support\MonitorProbe;
 use Illuminate\Database\QueryException;
@@ -10,7 +11,6 @@ use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
-use Spatie\DiscordAlerts\Jobs\SendToDiscordChannelJob;
 
 beforeEach(function () {
     Queue::fake();
@@ -40,7 +40,7 @@ it('non manda nulla su Discord quando il monitor era già su', function () {
 
     (new CheckMonitor($monitor))->handle(app(MonitorProbe::class));
 
-    Queue::assertNotPushed(SendToDiscordChannelJob::class);
+    Queue::assertNotPushed(SendDiscordAlert::class);
 });
 
 it('manda il recovery quando un monitor giù torna su', function () {
@@ -49,7 +49,7 @@ it('manda il recovery quando un monitor giù torna su', function () {
 
     (new CheckMonitor($monitor))->handle(app(MonitorProbe::class));
 
-    Queue::assertPushed(SendToDiscordChannelJob::class);
+    Queue::assertPushed(SendDiscordAlert::class);
     expect($monitor->refresh()->is_up)->toBeTrue();
 });
 
@@ -58,7 +58,7 @@ it('manda l alert e segna giù al fallimento definitivo', function () {
 
     (new CheckMonitor($monitor))->failed(new MonitorCheckFailed('HTTP 500, atteso 200'));
 
-    Queue::assertPushed(SendToDiscordChannelJob::class);
+    Queue::assertPushed(SendDiscordAlert::class);
 
     $monitor->refresh();
     expect($monitor->is_up)->toBeFalse()
@@ -70,7 +70,7 @@ it('non ri-allerta un monitor già noto come giù', function () {
 
     (new CheckMonitor($monitor))->failed(new MonitorCheckFailed('ancora giù'));
 
-    Queue::assertNotPushed(SendToDiscordChannelJob::class);
+    Queue::assertNotPushed(SendDiscordAlert::class);
     expect($monitor->refresh()->last_failure_reason)->toBe('ancora giù');
 });
 
@@ -87,7 +87,7 @@ it('allerta al primo fallimento di un monitor mai controllato', function () {
 
     (new CheckMonitor($monitor))->failed(new MonitorCheckFailed('giù'));
 
-    Queue::assertPushed(SendToDiscordChannelJob::class);
+    Queue::assertPushed(SendDiscordAlert::class);
 });
 
 it(
@@ -105,7 +105,7 @@ it('un ConnectionException del probe (timeout/DNS) allerta e segna il monitor gi
 
     (new CheckMonitor($monitor))->failed(new ConnectionException('Connection timed out'));
 
-    Queue::assertPushed(SendToDiscordChannelJob::class);
+    Queue::assertPushed(SendDiscordAlert::class);
     expect($monitor->refresh()->is_up)->toBeFalse();
 });
 
@@ -122,7 +122,7 @@ it('un fallimento di infrastruttura non tocca is_up (partendo da su) e non aller
 
     (new CheckMonitor($monitor))->failed($exception);
 
-    Queue::assertNotPushed(SendToDiscordChannelJob::class);
+    Queue::assertNotPushed(SendDiscordAlert::class);
 
     $monitor->refresh();
     expect($monitor->is_up)->toBeTrue()
@@ -139,7 +139,7 @@ it('un fallimento di infrastruttura non tocca is_up (partendo da mai controllato
 
     (new CheckMonitor($monitor))->failed(new TimeoutExceededException('CheckMonitor has timed out.'));
 
-    Queue::assertNotPushed(SendToDiscordChannelJob::class);
+    Queue::assertNotPushed(SendDiscordAlert::class);
     expect($monitor->refresh()->is_up)->toBeNull();
 });
 
@@ -150,7 +150,7 @@ it('non fa fallire il job quando il webhook Discord non e configurato', function
 
     (new CheckMonitor($monitor))->failed(new MonitorCheckFailed('HTTP 500, atteso 200'));
 
-    Queue::assertNotPushed(SendToDiscordChannelJob::class);
+    Queue::assertNotPushed(SendDiscordAlert::class);
     Log::shouldHaveReceived('warning')->once();
 
     $monitor->refresh();
@@ -166,7 +166,7 @@ it('non fa fallire il recovery quando il webhook Discord non e configurato', fun
 
     (new CheckMonitor($monitor))->handle(app(MonitorProbe::class));
 
-    Queue::assertNotPushed(SendToDiscordChannelJob::class);
+    Queue::assertNotPushed(SendDiscordAlert::class);
     Log::shouldHaveReceived('warning')->once();
     expect($monitor->refresh()->is_up)->toBeTrue();
 });

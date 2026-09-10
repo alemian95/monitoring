@@ -168,6 +168,25 @@ in `CheckMonitor`: uno in `failed()`, uno nel ramo di recovery. Nessuna
 Notification class, nessun listener, nessun evento: due chiamate in un file
 sono più facili da seguire di una catena di eventi.
 
+**Il job di consegna e' sostituito.** `SendToDiscordChannelJob` del pacchetto
+chiama `Http::post()` senza `->throw()`, quindi un webhook sbagliato, revocato
+o rate-limited risulta consegnato per sempre: nessuna riga in `failed_jobs`,
+niente nei log, nessuna differenza osservabile da un invio riuscito. In un
+sistema di alerting quello e' il fallimento peggiore, perche' il segnale di
+"tutto bene" e il segnale di "canale rotto" sono lo stesso silenzio.
+
+`App\Jobs\SendDiscordAlert` estende quel job aggiungendo `->throw()`, ed e'
+registrato in `config/discord-alerts.php` alla chiave `job`. Verificato contro
+Discord: un webhook inesistente produce ora una riga in `failed_jobs` con
+`RequestException: HTTP request returned status code 404 {"message": "Unknown
+Webhook"}`.
+
+Un vincolo che ne deriva: `discord-alerts.queue_connection` **non** va messo a
+`sync`. Con la connection `database` l'alert viene accodato e fallisce per
+conto suo; in `sync` l'eccezione risalirebbe dentro `CheckMonitor::failed()`,
+dove verrebbe classificata come guasto di infrastruttura. Un test fissa
+entrambi i comportamenti.
+
 ## Flusso completo
 
 1. Il cron invoca lo scheduler ogni minuto.
