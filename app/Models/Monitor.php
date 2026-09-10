@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\MonitorType;
+use App\Enums\UptimeRange;
 use Database\Factories\MonitorFactory;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
@@ -39,33 +40,40 @@ class Monitor extends Model
     }
 
     /**
-     * Percentuale di check riusciti per giorno, dal piu' vecchio al piu'
-     * recente, con i giorni senza dati a `null` e non a zero: un giorno in cui
-     * il monitor era in pausa non e' un giorno di downtime, e disegnarlo a zero
-     * sarebbe una bugia.
+     * Percentuale di check riusciti per bucket temporale, dal piu' vecchio al
+     * piu' recente. I bucket senza dati valgono `null` e non zero: un
+     * intervallo in cui il monitor era in pausa non e' downtime, e disegnarlo a
+     * zero sarebbe una bugia.
      *
-     * @return Collection<string, float|null> chiave `Y-m-d`
+     * @return Collection<string, float|null> chiave = istante iniziale del bucket
      */
-    public function uptimeByDay(int $days = 30): Collection
+    public function uptimeSeries(UptimeRange $range = UptimeRange::Month): Collection
     {
-        $from = now()->subDays($days - 1)->startOfDay();
+        $since = $range->since();
+        [$step, $unit] = $range->bucket();
 
         $rows = $this->checks()
-            ->where('checked_at', '>=', $from)
-            ->selectRaw('date(checked_at) as day, count(*) as total, sum(is_up) as up')
-            ->groupBy('day')
+            ->where('checked_at', '>=', $since)
+            ->selectRaw('strftime(?, checked_at) as bucket, count(*) as total, sum(is_up) as up', [$range->sqlFormat()])
+            ->groupBy('bucket')
             ->get()
-            ->keyBy('day');
+            ->keyBy('bucket');
 
-        return collect(range(0, $days - 1))
-            ->mapWithKeys(function (int $offset) use ($from, $rows): array {
-                $day = $from->copy()->addDays($offset)->format('Y-m-d');
-                $row = $rows->get($day);
+        $series = collect();
+        $cursor = $since->copy();
 
-                return [$day => $row === null
-                    ? null
-                    : round($row->up / $row->total * 100, 2)];
-            });
+        while ($cursor <= now()) {
+            $key = $cursor->format($range->carbonFormat());
+            $row = $rows->get($key);
+
+            $series[$cursor->toDateTimeString()] = $row === null
+                ? null
+                : round($row->up / $row->total * 100, 2);
+
+            $cursor->add($unit, $step);
+        }
+
+        return $series;
     }
 
     /**

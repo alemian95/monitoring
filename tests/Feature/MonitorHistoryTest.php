@@ -1,6 +1,7 @@
 <?php
 
 use App\Exceptions\MonitorCheckFailed;
+use App\Enums\UptimeRange;
 use App\Filament\Resources\Monitors\Pages\EditMonitor;
 use App\Filament\Resources\Monitors\Widgets\MonitorUptimeChart;
 use App\Filament\Widgets\UptimeOverview;
@@ -45,7 +46,7 @@ it('NON registra nello storico un guasto di infrastruttura', function () {
     expect($monitor->checks()->count())->toBe(0);
 });
 
-it('lascia a null i giorni senza dati invece di disegnarli a zero', function () {
+it('lascia a null i bucket senza dati invece di disegnarli a zero', function () {
     $monitor = Monitor::factory()->create();
 
     // ieri: 3 check su 4 riusciti. Oggi e i restanti 28 giorni: nessun dato.
@@ -57,7 +58,7 @@ it('lascia a null i giorni senza dati invece di disegnarli a zero', function () 
         ]);
     }
 
-    $series = $monitor->uptimeByDay()->values()->all();
+    $series = $monitor->uptimeSeries()->values()->all();
 
     expect($series)->toHaveCount(30)
         ->and(array_filter($series, fn ($v): bool => $v !== null))->toBe([28 => 75.0])
@@ -86,7 +87,7 @@ it('renderizza il grafico uptime del monitor con le sue etichette', function () 
     ]);
 
     Livewire::test(MonitorUptimeChart::class, ['record' => $monitor])
-        ->assertSee('Uptime — ultimi 30 giorni')
+        ->assertSee('Uptime')
         ->assertSuccessful();
 });
 
@@ -114,4 +115,71 @@ it('espone l azione di export dello storico', function () {
     $this->get('/admin/monitors')
         ->assertSuccessful()
         ->assertSee('Esporta storico');
+});
+
+it('produce il numero di bucket atteso per ogni finestra', function (UptimeRange $range, int $expected) {
+    $monitor = Monitor::factory()->create();
+
+    expect($monitor->uptimeSeries($range))->toHaveCount($expected);
+})->with([
+    [UptimeRange::Hour, 60],
+    [UptimeRange::Day, 24],
+    [UptimeRange::Week, 7],
+    [UptimeRange::Month, 30],
+]);
+
+it('raggruppa i check nel bucket giusto su ogni finestra', function () {
+    $monitor = Monitor::factory()->create();
+
+    // Due check nello stesso minuto, uno su e uno giù: 50% in quel bucket,
+    // qualunque sia la finestra scelta.
+    foreach ([true, false] as $isUp) {
+        MonitorCheck::create([
+            'monitor_id' => $monitor->id,
+            'is_up' => $isUp,
+            'checked_at' => now()->subMinutes(2),
+        ]);
+    }
+
+    foreach (UptimeRange::cases() as $range) {
+        $withData = $monitor->uptimeSeries($range)->filter(fn (?float $v): bool => $v !== null);
+
+        expect($withData->all())->toBe([$withData->keys()->first() => 50.0], "finestra {$range->value}");
+    }
+});
+
+it('espone le quattro finestre come filtro del grafico', function () {
+    $this->actingAs(User::factory()->create());
+    $monitor = Monitor::factory()->create();
+
+    Livewire::test(MonitorUptimeChart::class, ['record' => $monitor])
+        ->assertSee('Ultima ora')
+        ->assertSee('Ultime 24 ore')
+        ->assertSee('Ultimi 7 giorni')
+        ->assertSee('Ultimi 30 giorni');
+});
+
+it('cambia i dati quando si cambia finestra', function () {
+    $this->actingAs(User::factory()->create());
+    $monitor = Monitor::factory()->create();
+
+    $chart = Livewire::test(MonitorUptimeChart::class, ['record' => $monitor]);
+
+    $chart->set('filter', 'hour');
+    expect(invade($chart->instance())->getCachedData()['labels'])->toHaveCount(60);
+
+    $chart->set('filter', 'week');
+    expect(invade($chart->instance())->getCachedData()['labels'])->toHaveCount(7);
+});
+
+it('fissa l asse verticale a 100, che è il massimo che una percentuale può valere', function () {
+    $this->actingAs(User::factory()->create());
+    $monitor = Monitor::factory()->create();
+
+    $options = invade(
+        Livewire::test(MonitorUptimeChart::class, ['record' => $monitor])->instance()
+    )->getOptions();
+
+    expect($options['scales']['y']['max'])->toBe(100)
+        ->and($options['scales']['y']['min'])->toBe(0);
 });
