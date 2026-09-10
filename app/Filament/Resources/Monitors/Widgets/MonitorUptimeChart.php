@@ -74,6 +74,13 @@ class MonitorUptimeChart extends ChartWidget
             'plugins' => [
                 'legend' => ['display' => false],
             ],
+            // Il margine sta sul canvas, non sulla scala: alzare `max` sopra
+            // 100 mostrerebbe un dominio che una percentuale non ha, mentre il
+            // padding lascia solo respiro al marker del 100%, che altrimenti il
+            // bordo taglia a metà.
+            'layout' => [
+                'padding' => ['top' => 12],
+            ],
         ];
     }
 

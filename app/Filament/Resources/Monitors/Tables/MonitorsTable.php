@@ -33,6 +33,18 @@ class MonitorsTable
                     ->label('Stato')
                     ->boolean()
                     ->placeholder('mai controllato'),
+                TextColumn::make('uptime_24h')
+                    ->label('Uptime 24h')
+                    ->placeholder('—')
+                    ->sortable()
+                    ->formatStateUsing(fn (float $state): string => round($state * 100, 2).'%')
+                    ->color(fn (?float $state): string => match (true) {
+                        $state === null => 'gray',
+                        $state >= 0.99 => 'success',
+                        $state >= 0.95 => 'warning',
+                        default => 'danger',
+                    }),
+
                 ToggleColumn::make('is_active')
                     ->label('Attivo'),
                 TextColumn::make('last_checked_at')

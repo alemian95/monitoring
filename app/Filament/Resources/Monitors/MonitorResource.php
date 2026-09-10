@@ -13,6 +13,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class MonitorResource extends Resource
 {
@@ -35,6 +36,23 @@ class MonitorResource extends Resource
         return [
             //
         ];
+    }
+
+    /**
+     * Aggiunge l'uptime delle ultime 24 ore come aggregato, cosi' la colonna in
+     * tabella costa una subquery invece di una query per riga.
+     *
+     * `is_up` e' 0/1, quindi la sua media e' direttamente la percentuale di
+     * check riusciti, una volta moltiplicata per cento.
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()
+            ->withAvg(
+                ['checks as uptime_24h' => fn (Builder $query): Builder => $query
+                    ->where('checked_at', '>=', now()->subDay())],
+                'is_up',
+            );
     }
 
     public static function getPages(): array

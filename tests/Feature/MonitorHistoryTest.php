@@ -1,7 +1,8 @@
 <?php
 
-use App\Exceptions\MonitorCheckFailed;
 use App\Enums\UptimeRange;
+use App\Exceptions\MonitorCheckFailed;
+use App\Filament\Resources\Monitors\MonitorResource;
 use App\Filament\Resources\Monitors\Pages\EditMonitor;
 use App\Filament\Resources\Monitors\Widgets\MonitorUptimeChart;
 use App\Filament\Widgets\UptimeOverview;
@@ -182,4 +183,61 @@ it('fissa l asse verticale a 100, che è il massimo che una percentuale può val
 
     expect($options['scales']['y']['max'])->toBe(100)
         ->and($options['scales']['y']['min'])->toBe(0);
+});
+
+it('mostra l uptime di ogni monitor in tabella, con una sola query aggregata', function () {
+    $this->actingAs(User::factory()->create());
+
+    $up = Monitor::factory()->create(['name' => 'sempre-su']);
+    $flaky = Monitor::factory()->create(['name' => 'intermittente']);
+    $mai = Monitor::factory()->create(['name' => 'mai-controllato']);
+
+    foreach ([[$up, [true, true, true, true]], [$flaky, [true, false, true, true]]] as [$monitor, $results]) {
+        foreach ($results as $i => $isUp) {
+            MonitorCheck::create([
+                'monitor_id' => $monitor->id,
+                'is_up' => $isUp,
+                'checked_at' => now()->subHours($i + 1),
+            ]);
+        }
+    }
+
+    $rows = MonitorResource::getEloquentQuery()->get()->keyBy('name');
+
+    expect(round($rows['sempre-su']->uptime_24h * 100, 2))->toBe(100.0)
+        ->and(round($rows['intermittente']->uptime_24h * 100, 2))->toBe(75.0)
+        ->and($rows['mai-controllato']->uptime_24h)->toBeNull();
+});
+
+it('esclude dall uptime in tabella i check piu vecchi di 24 ore', function () {
+    $this->actingAs(User::factory()->create());
+    $monitor = Monitor::factory()->create();
+
+    MonitorCheck::create([
+        'monitor_id' => $monitor->id,
+        'is_up' => false,
+        'checked_at' => now()->subDays(3),
+    ]);
+    MonitorCheck::create([
+        'monitor_id' => $monitor->id,
+        'is_up' => true,
+        'checked_at' => now()->subHour(),
+    ]);
+
+    $row = MonitorResource::getEloquentQuery()->find($monitor->id);
+
+    // Il fallimento di tre giorni fa non deve abbassare la percentuale di oggi.
+    expect(round($row->uptime_24h * 100, 2))->toBe(100.0);
+});
+
+it('lascia respiro sopra il 100 senza estendere la scala oltre il dominio', function () {
+    $this->actingAs(User::factory()->create());
+    $monitor = Monitor::factory()->create();
+
+    $options = invade(
+        Livewire::test(MonitorUptimeChart::class, ['record' => $monitor])->instance()
+    )->getOptions();
+
+    expect($options['scales']['y']['max'])->toBe(100)
+        ->and($options['layout']['padding']['top'])->toBeGreaterThan(0);
 });
