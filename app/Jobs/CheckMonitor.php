@@ -56,6 +56,8 @@ class CheckMonitor implements ShouldBeUnique, ShouldQueue
             'next_check_at' => now()->addMinutes($this->monitor->interval_minutes),
         ]);
 
+        $this->monitor->recordCheck(true);
+
         if ($wasDown) {
             $this->alert("✅ **{$this->monitor->name}** è tornato su — {$this->monitor->target}");
         }
@@ -95,6 +97,8 @@ class CheckMonitor implements ShouldBeUnique, ShouldQueue
             'last_checked_at' => now(),
             'next_check_at' => now()->addMinutes($this->monitor->interval_minutes),
         ]);
+
+        $this->monitor->recordCheck(false);
 
         if ($wasUp) {
             $this->alert(

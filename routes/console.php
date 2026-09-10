@@ -2,6 +2,7 @@
 
 use App\Jobs\CheckMonitor;
 use App\Models\Monitor;
+use App\Models\MonitorCheck;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -15,3 +16,10 @@ Schedule::call(function (): void {
 })->everyMinute()->name('dispatch-monitor-checks')->withoutOverlapping(2);
 
 Schedule::command('queue:prune-failed --hours=168')->daily();
+
+// Retention dello storico dei check: 30 giorni. A intervallo di un minuto sono
+// ~1.440 righe al giorno per target, quindi senza potatura la tabella cresce
+// senza limite.
+Schedule::call(function (): void {
+    MonitorCheck::where('checked_at', '<', now()->subDays(30))->delete();
+})->daily()->name('prune-monitor-checks');

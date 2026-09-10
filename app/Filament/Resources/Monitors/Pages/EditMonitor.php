@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Monitors\Pages;
 
 use App\Filament\Resources\Monitors\MonitorResource;
+use App\Filament\Resources\Monitors\Widgets\MonitorUptimeChart;
 use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
 
@@ -14,6 +15,16 @@ class EditMonitor extends EditRecord
     {
         return [
             DeleteAction::make(),
+        ];
+    }
+
+    /**
+     * @return array<class-string>
+     */
+    protected function getFooterWidgets(): array
+    {
+        return [
+            MonitorUptimeChart::class,
         ];
     }
 }

@@ -2,12 +2,14 @@
 
 namespace App\Filament\Resources\Monitors\Tables;
 
+use App\Filament\Exports\MonitorCheckExporter;
 use App\Jobs\CheckMonitor;
 use App\Models\Monitor;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Actions\ExportAction;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\ToggleColumn;
@@ -45,6 +47,12 @@ class MonitorsTable
             ])
             ->filters([
                 //
+            ])
+            ->headerActions([
+                ExportAction::make()
+                    ->label('Esporta storico')
+                    ->exporter(MonitorCheckExporter::class)
+                    ->icon('heroicon-o-arrow-down-tray'),
             ])
             ->recordActions([
                 Action::make('checkNow')
