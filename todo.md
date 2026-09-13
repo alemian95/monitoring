@@ -2,24 +2,33 @@
 
 Prossimi passi per rendere il monitoring piu' efficace. In ordine di priorita'.
 
-## 1. Check della risposta attesa, oltre al solo status code
-
-Oggi un `200` che serve "Database connection failed" passa come successo: e'
-il falso negativo piu' comune. Serve un controllo opzionale sul corpo della
-risposta (`expected_body_contains`), nullable — quando e' vuoto il
-comportamento resta quello attuale.
-
-Da decidere: solo substring o anche regex. La substring copre il 90% dei casi
-e non ha modi di sbagliarsi.
+I punti 1 e 4 sono fatti: status code multipli, corpo atteso, tempo di
+risposta con soglia, e status/tempo/motivo salvati per ogni check. La
+numerazione dei rimanenti resta quella originale.
 
 ## 2. Scadenza del certificato SSL
 
 Un dominio "su" con il certificato che scade fra tre giorni e' un incidente
-gia' in calendario. Il certificato e' gia' nello stream della richiesta HTTPS,
-non serve una connessione in piu'.
+gia' in calendario.
 
-Alert a soglia (es. 14 e 3 giorni), separato da quello di down: e' un avviso,
-non un'emergenza.
+Due cose emerse valutandolo, da non ri-scoprire:
+
+- **Non va nel probe.** Un certificato non scade fra un minuto e l'altro:
+  metterlo nel check per-minuto significa una connessione TLS in piu' ogni
+  sessanta secondi per un dato che cambia una volta ogni tre mesi. Comando
+  artisan giornaliero, cosi' e' anche lanciabile a mano.
+- **E' previsione, non rilevamento.** Un certificato gia' scaduto fa fallire
+  la verifica TLS di Guzzle, quindi oggi genera gia' un alert di down. Questa
+  feature serve a sapere che scade fra quattordici giorni.
+
+Lettura con `stream_socket_client` su `ssl://host:443` e `capture_peer_cert`,
+con `verify_peer => false`: si sta leggendo una data, non fidandosi della
+connessione, e senza quel flag un certificato gia' scaduto non si riuscirebbe
+nemmeno a leggere.
+
+Dedup con due colonne — `certificate_expires_at` e `certificate_alerted_at`:
+alert una volta sola sotto soglia, e quando la scadenza letta e' diversa da
+quella salvata il certificato e' stato rinnovato e si riparte.
 
 ## 3. Dead man's switch — da valutare
 
@@ -37,14 +46,6 @@ Due approcci, coprono buchi diversi:
   Zero dipendenze, ma muore insieme al resto.
 
 Da valutare se prenderli entrambi.
-
-## 4. Response time atteso, configurabile
-
-Registrare i millisecondi in `monitor_checks` e fallire il check sopra una
-soglia per-target. Il grafico che c'e' gia' mostrerebbe il degrado *prima* del
-down: il sistema smette di essere solo reattivo.
-
-Soglia nullable: senza valore si registra il tempo senza farci nulla.
 
 ## 5. Re-alert finche' il target resta giu'
 

@@ -1,7 +1,9 @@
 # Monitoring
 
-Controlla domini (HTTP status) e VPS (porta TCP) su un intervallo per-target e
-avvisa un canale Discord quando un target è giù, con recovery quando torna su.
+Controlla domini (status HTTP fra quelli accettati, testo atteso nel corpo,
+tempo di risposta sotto soglia) e VPS (porta TCP) su un intervallo per-target
+e avvisa un canale Discord quando un target è giù, con recovery quando torna
+su. Di ogni check restano status, tempo di risposta e motivo del fallimento.
 Gestione dei target via Filament (`/admin`).
 
 ## In sviluppo
