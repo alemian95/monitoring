@@ -30,6 +30,15 @@ class MonitorCheckExporter extends Exporter
             ExportColumn::make('is_up')
                 ->label('Stato')
                 ->formatStateUsing(fn (bool $state): string => $state ? 'su' : 'giù'),
+
+            ExportColumn::make('status_code')
+                ->label('Status'),
+
+            ExportColumn::make('response_time_ms')
+                ->label('Tempo di risposta (ms)'),
+
+            ExportColumn::make('failure_reason')
+                ->label('Errore'),
         ];
     }
 

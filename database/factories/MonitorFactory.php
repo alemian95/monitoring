@@ -24,6 +24,7 @@ class MonitorFactory extends Factory
             'expected_statuses' => [200],
             'expected_body_contains' => null,
             'timeout_seconds' => 10,
+            'max_response_time_ms' => null,
             'interval_minutes' => 1,
             'is_active' => true,
             'is_up' => null,

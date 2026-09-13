@@ -3,6 +3,7 @@
 use App\Exceptions\MonitorCheckFailed;
 use App\Models\Monitor;
 use App\Support\MonitorProbe;
+use App\Support\ProbeResult;
 use Illuminate\Support\Facades\Http;
 
 it('passa quando lo status HTTP è quello atteso', function () {
@@ -144,3 +145,84 @@ it('lancia quando la porta TCP è chiusa', function () {
 
     app(MonitorProbe::class)->check($monitor);
 })->throws(MonitorCheckFailed::class);
+
+it('riporta status e tempo di risposta del check riuscito', function () {
+    Http::fake(['https://example.test/*' => Http::response('ok', 204)]);
+
+    $monitor = Monitor::factory()->create([
+        'target' => 'https://example.test/health',
+        'expected_statuses' => [204],
+    ]);
+
+    $result = app(MonitorProbe::class)->check($monitor);
+
+    expect($result)->toBeInstanceOf(ProbeResult::class)
+        ->and($result->statusCode)->toBe(204)
+        ->and($result->responseTimeMs)->toBeGreaterThanOrEqual(0);
+});
+
+it('riporta il tempo di connessione TCP, senza status', function () {
+    $server = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+    $port = (int) explode(':', stream_socket_get_name($server, false))[1];
+
+    $monitor = Monitor::factory()->tcp()->create(['target' => '127.0.0.1', 'port' => $port]);
+
+    try {
+        $result = app(MonitorProbe::class)->check($monitor);
+    } finally {
+        fclose($server);
+    }
+
+    expect($result->statusCode)->toBeNull()
+        ->and($result->responseTimeMs)->toBeGreaterThanOrEqual(0);
+});
+
+it('lancia quando la risposta supera il tempo massimo configurato', function () {
+    Http::fake(function () {
+        usleep(30_000);
+
+        return Http::response('ok', 200);
+    });
+
+    $monitor = Monitor::factory()->create([
+        'target' => 'https://example.test/health',
+        'max_response_time_ms' => 1,
+    ]);
+
+    app(MonitorProbe::class)->check($monitor);
+})->throws(MonitorCheckFailed::class, 'oltre il limite di 1 ms');
+
+it('non guarda il tempo quando la soglia non e configurata', function () {
+    Http::fake(function () {
+        usleep(30_000);
+
+        return Http::response('ok', 200);
+    });
+
+    $monitor = Monitor::factory()->create([
+        'target' => 'https://example.test/health',
+        'max_response_time_ms' => null,
+    ]);
+
+    app(MonitorProbe::class)->check($monitor);
+})->throwsNoExceptions();
+
+it('porta status e tempo dentro l eccezione, non solo nel messaggio', function () {
+    Http::fake(['https://example.test/*' => Http::response('boom', 503)]);
+
+    $monitor = Monitor::factory()->create([
+        'target' => 'https://example.test/health',
+        'expected_statuses' => [200],
+    ]);
+
+    try {
+        app(MonitorProbe::class)->check($monitor);
+    } catch (MonitorCheckFailed $exception) {
+        expect($exception->statusCode)->toBe(503)
+            ->and($exception->responseTimeMs)->toBeGreaterThanOrEqual(0);
+
+        return;
+    }
+
+    $this->fail('il probe non ha lanciato');
+});

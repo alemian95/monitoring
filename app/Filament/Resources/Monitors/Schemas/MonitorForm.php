@@ -55,6 +55,11 @@ class MonitorForm
                     ->maxValue(30)
                     ->default(10)
                     ->required(),
+                TextInput::make('max_response_time_ms')
+                    ->label('Tempo di risposta massimo (ms)')
+                    ->helperText('Opzionale. Oltre la soglia il check conta come fallito.')
+                    ->numeric()
+                    ->minValue(1),
                 Toggle::make('is_active')
                     ->default(true),
             ]);

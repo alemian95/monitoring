@@ -4,6 +4,7 @@ use App\Enums\UptimeRange;
 use App\Exceptions\MonitorCheckFailed;
 use App\Filament\Resources\Monitors\MonitorResource;
 use App\Filament\Resources\Monitors\Pages\EditMonitor;
+use App\Filament\Resources\Monitors\Widgets\MonitorResponseTimeChart;
 use App\Filament\Resources\Monitors\Widgets\MonitorUptimeChart;
 use App\Filament\Widgets\UptimeOverview;
 use App\Jobs\CheckMonitor;
@@ -11,6 +12,8 @@ use App\Models\Monitor;
 use App\Models\MonitorCheck;
 use App\Models\User;
 use App\Support\MonitorProbe;
+use App\Support\ProbeResult;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
@@ -22,7 +25,7 @@ beforeEach(function () {
 
 it('registra un check riuscito nello storico', function () {
     $monitor = Monitor::factory()->create();
-    $this->mock(MonitorProbe::class)->shouldReceive('check')->once();
+    $this->mock(MonitorProbe::class)->shouldReceive('check')->once()->andReturn(new ProbeResult(42, 200));
 
     (new CheckMonitor($monitor))->handle(app(MonitorProbe::class));
 
@@ -240,4 +243,118 @@ it('lascia respiro sopra il 100 senza estendere la scala oltre il dominio', func
 
     expect($options['scales']['y']['max'])->toBe(100)
         ->and($options['layout']['padding']['top'])->toBeGreaterThan(0);
+});
+
+it('salva status e tempo di risposta del check riuscito', function () {
+    $monitor = Monitor::factory()->create();
+    $this->mock(MonitorProbe::class)->shouldReceive('check')->once()->andReturn(new ProbeResult(137, 204));
+
+    (new CheckMonitor($monitor))->handle(app(MonitorProbe::class));
+
+    $check = $monitor->checks()->first();
+
+    expect($check->status_code)->toBe(204)
+        ->and($check->response_time_ms)->toBe(137)
+        ->and($check->failure_reason)->toBeNull();
+});
+
+it('salva status, tempo e motivo anche quando il check fallisce', function () {
+    $monitor = Monitor::factory()->create();
+
+    (new CheckMonitor($monitor))->failed(
+        new MonitorCheckFailed('HTTP 503, attesi 200', 503, 88)
+    );
+
+    $check = $monitor->checks()->first();
+
+    expect($check->is_up)->toBeFalse()
+        ->and($check->status_code)->toBe(503)
+        ->and($check->response_time_ms)->toBe(88)
+        ->and($check->failure_reason)->toBe('HTTP 503, attesi 200');
+});
+
+it('registra il motivo ma non status ne tempo quando non c e stata risposta', function () {
+    $monitor = Monitor::factory()->create();
+
+    (new CheckMonitor($monitor))->failed(new ConnectionException('Connection timed out'));
+
+    $check = $monitor->checks()->first();
+
+    expect($check->failure_reason)->toBe('Connection timed out')
+        ->and($check->status_code)->toBeNull()
+        ->and($check->response_time_ms)->toBeNull();
+});
+
+it('media i tempi di risposta per bucket e lascia a null quelli vuoti', function () {
+    $monitor = Monitor::factory()->create();
+
+    foreach ([100, 300] as $ms) {
+        MonitorCheck::create([
+            'monitor_id' => $monitor->id,
+            'is_up' => true,
+            'response_time_ms' => $ms,
+            'checked_at' => now()->subDay()->startOfDay(),
+        ]);
+    }
+
+    $series = $monitor->responseTimeSeries()->values()->all();
+
+    expect($series)->toHaveCount(30)
+        ->and(array_filter($series, fn ($v): bool => $v !== null))->toBe([28 => 200.0])
+        ->and($series[29])->toBeNull();
+});
+
+it('esclude dalla media i check senza tempo, invece di contarli come zero', function () {
+    $monitor = Monitor::factory()->create();
+
+    MonitorCheck::create([
+        'monitor_id' => $monitor->id,
+        'is_up' => true,
+        'response_time_ms' => 200,
+        'checked_at' => now()->subMinutes(2),
+    ]);
+
+    // Un timeout: nessun tempo da registrare.
+    MonitorCheck::create([
+        'monitor_id' => $monitor->id,
+        'is_up' => false,
+        'response_time_ms' => null,
+        'checked_at' => now()->subMinutes(2),
+    ]);
+
+    $withData = $monitor->responseTimeSeries(UptimeRange::Hour)
+        ->filter(fn (?float $v): bool => $v !== null);
+
+    expect($withData->first())->toBe(200.0);
+});
+
+it('renderizza il grafico dei tempi di risposta e lo registra nella pagina', function () {
+    $this->actingAs(User::factory()->create());
+    $monitor = Monitor::factory()->create();
+    MonitorCheck::create([
+        'monitor_id' => $monitor->id,
+        'is_up' => true,
+        'response_time_ms' => 120,
+        'checked_at' => now()->subHour(),
+    ]);
+
+    Livewire::test(MonitorResponseTimeChart::class, ['record' => $monitor])
+        ->assertSee('Tempo di risposta')
+        ->assertSuccessful();
+
+    $widgets = (new ReflectionMethod(EditMonitor::class, 'getFooterWidgets'))
+        ->invoke(new EditMonitor);
+
+    expect($widgets)->toContain(MonitorResponseTimeChart::class);
+});
+
+it('lascia libero verso l alto l asse dei millisecondi, che non hanno un tetto', function () {
+    $this->actingAs(User::factory()->create());
+    $monitor = Monitor::factory()->create();
+
+    $options = invade(
+        Livewire::test(MonitorResponseTimeChart::class, ['record' => $monitor])->instance()
+    )->getOptions();
+
+    expect($options['scales']['y'])->toBe(['beginAtZero' => true]);
 });

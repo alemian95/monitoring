@@ -45,7 +45,7 @@ class CheckMonitor implements ShouldBeUnique, ShouldQueue
 
     public function handle(MonitorProbe $probe): void
     {
-        $probe->check($this->monitor);
+        $result = $probe->check($this->monitor);
 
         $wasDown = $this->monitor->is_up === false;
 
@@ -56,7 +56,11 @@ class CheckMonitor implements ShouldBeUnique, ShouldQueue
             'next_check_at' => now()->addMinutes($this->monitor->interval_minutes),
         ]);
 
-        $this->monitor->recordCheck(true);
+        $this->monitor->recordCheck(
+            true,
+            statusCode: $result->statusCode,
+            responseTimeMs: $result->responseTimeMs,
+        );
 
         if ($wasDown) {
             $this->alert("✅ **{$this->monitor->name}** è tornato su — {$this->monitor->target}");
@@ -98,7 +102,12 @@ class CheckMonitor implements ShouldBeUnique, ShouldQueue
             'next_check_at' => now()->addMinutes($this->monitor->interval_minutes),
         ]);
 
-        $this->monitor->recordCheck(false);
+        $this->monitor->recordCheck(
+            false,
+            statusCode: $exception instanceof MonitorCheckFailed ? $exception->statusCode : null,
+            responseTimeMs: $exception instanceof MonitorCheckFailed ? $exception->responseTimeMs : null,
+            failureReason: $exception->getMessage(),
+        );
 
         if ($wasUp) {
             $this->alert(

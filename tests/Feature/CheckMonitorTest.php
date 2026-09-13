@@ -5,6 +5,7 @@ use App\Jobs\CheckMonitor;
 use App\Jobs\SendDiscordAlert;
 use App\Models\Monitor;
 use App\Support\MonitorProbe;
+use App\Support\ProbeResult;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Queue\TimeoutExceededException;
@@ -24,7 +25,7 @@ beforeEach(function () {
 
 it('segna il monitor come su e programma il prossimo check', function () {
     $monitor = Monitor::factory()->create(['is_up' => null, 'interval_minutes' => 5]);
-    $this->mock(MonitorProbe::class)->shouldReceive('check')->once();
+    $this->mock(MonitorProbe::class)->shouldReceive('check')->once()->andReturn(new ProbeResult(42, 200));
 
     (new CheckMonitor($monitor))->handle(app(MonitorProbe::class));
 
@@ -36,7 +37,7 @@ it('segna il monitor come su e programma il prossimo check', function () {
 
 it('non manda nulla su Discord quando il monitor era già su', function () {
     $monitor = Monitor::factory()->create(['is_up' => true]);
-    $this->mock(MonitorProbe::class)->shouldReceive('check')->once();
+    $this->mock(MonitorProbe::class)->shouldReceive('check')->once()->andReturn(new ProbeResult(42, 200));
 
     (new CheckMonitor($monitor))->handle(app(MonitorProbe::class));
 
@@ -45,7 +46,7 @@ it('non manda nulla su Discord quando il monitor era già su', function () {
 
 it('manda il recovery quando un monitor giù torna su', function () {
     $monitor = Monitor::factory()->create(['is_up' => false]);
-    $this->mock(MonitorProbe::class)->shouldReceive('check')->once();
+    $this->mock(MonitorProbe::class)->shouldReceive('check')->once()->andReturn(new ProbeResult(42, 200));
 
     (new CheckMonitor($monitor))->handle(app(MonitorProbe::class));
 
@@ -162,7 +163,7 @@ it('non fa fallire il recovery quando il webhook Discord non e configurato', fun
     config(['discord-alerts.webhook_urls.default' => null]);
     Log::spy();
     $monitor = Monitor::factory()->create(['is_up' => false]);
-    $this->mock(MonitorProbe::class)->shouldReceive('check')->once();
+    $this->mock(MonitorProbe::class)->shouldReceive('check')->once()->andReturn(new ProbeResult(42, 200));
 
     (new CheckMonitor($monitor))->handle(app(MonitorProbe::class));
 
