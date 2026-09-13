@@ -22,12 +22,31 @@ class MonitorProbe
 
     private function checkHttp(Monitor $monitor): void
     {
-        $status = Http::timeout($monitor->timeout_seconds)
-            ->get($monitor->target)
-            ->status();
+        $response = Http::timeout($monitor->timeout_seconds)->get($monitor->target);
 
-        if ($status !== $monitor->expected_status) {
-            throw new MonitorCheckFailed("HTTP {$status}, atteso {$monitor->expected_status}");
+        // ponytail: una lista vuota vale [200]. Il campo e' nullable perche' i
+        // monitor TCP non lo compilano, e un monitor HTTP senza codici attesi
+        // vuole dire il default, non "qualunque risposta va bene".
+        //
+        // `intval` perche' il TagsInput del form salva stringhe: senza
+        // normalizzare, il confronto stretto con lo status intero fallirebbe
+        // sempre, e ogni target risulterebbe giu'.
+        $expected = array_map(intval(...), $monitor->expected_statuses ?: [200]);
+
+        if (! in_array($response->status(), $expected, true)) {
+            throw new MonitorCheckFailed(
+                "HTTP {$response->status()}, attesi ".implode(', ', $expected)
+            );
+        }
+
+        if (blank($monitor->expected_body_contains)) {
+            return;
+        }
+
+        if (! str_contains($response->body(), $monitor->expected_body_contains)) {
+            throw new MonitorCheckFailed(
+                "Corpo della risposta senza «{$monitor->expected_body_contains}»"
+            );
         }
     }
 

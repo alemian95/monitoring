@@ -10,7 +10,7 @@ it('passa quando lo status HTTP è quello atteso', function () {
 
     $monitor = Monitor::factory()->create([
         'target' => 'https://example.test/health',
-        'expected_status' => 200,
+        'expected_statuses' => [200],
     ]);
 
     app(MonitorProbe::class)->check($monitor);
@@ -21,7 +21,7 @@ it('lancia quando lo status HTTP non è quello atteso', function () {
 
     $monitor = Monitor::factory()->create([
         'target' => 'https://example.test/health',
-        'expected_status' => 200,
+        'expected_statuses' => [200],
     ]);
 
     app(MonitorProbe::class)->check($monitor);
@@ -32,7 +32,84 @@ it('rispetta uno status atteso diverso da 200', function () {
 
     $monitor = Monitor::factory()->create([
         'target' => 'https://example.test/health',
-        'expected_status' => 301,
+        'expected_statuses' => [301],
+    ]);
+
+    app(MonitorProbe::class)->check($monitor);
+})->throwsNoExceptions();
+
+it('accetta uno qualsiasi degli status attesi', function () {
+    Http::fake(['https://example.test/*' => Http::response('', 301)]);
+
+    $monitor = Monitor::factory()->create([
+        'target' => 'https://example.test/health',
+        'expected_statuses' => [200, 301],
+    ]);
+
+    app(MonitorProbe::class)->check($monitor);
+})->throwsNoExceptions();
+
+it('lancia quando lo status non e in lista, elencando quelli attesi', function () {
+    Http::fake(['https://example.test/*' => Http::response('', 500)]);
+
+    $monitor = Monitor::factory()->create([
+        'target' => 'https://example.test/health',
+        'expected_statuses' => [200, 204],
+    ]);
+
+    app(MonitorProbe::class)->check($monitor);
+})->throws(MonitorCheckFailed::class, 'HTTP 500, attesi 200, 204');
+
+it('confronta gli status come interi anche quando il form li salva come stringhe', function () {
+    Http::fake(['https://example.test/*' => Http::response('', 204)]);
+
+    $monitor = Monitor::factory()->create([
+        'target' => 'https://example.test/health',
+        'expected_statuses' => ['200', '204'],
+    ]);
+
+    app(MonitorProbe::class)->check($monitor);
+})->throwsNoExceptions();
+
+it('senza status attesi ricade sul 200', function () {
+    Http::fake(['https://example.test/*' => Http::response('', 200)]);
+
+    $monitor = Monitor::factory()->create([
+        'target' => 'https://example.test/health',
+        'expected_statuses' => null,
+    ]);
+
+    app(MonitorProbe::class)->check($monitor);
+})->throwsNoExceptions();
+
+it('passa quando il corpo contiene il testo atteso', function () {
+    Http::fake(['https://example.test/*' => Http::response('<h1>Benvenuto</h1>', 200)]);
+
+    $monitor = Monitor::factory()->create([
+        'target' => 'https://example.test/health',
+        'expected_body_contains' => 'Benvenuto',
+    ]);
+
+    app(MonitorProbe::class)->check($monitor);
+})->throwsNoExceptions();
+
+it('lancia su un 200 che non contiene il testo atteso', function () {
+    Http::fake(['https://example.test/*' => Http::response('Database connection failed', 200)]);
+
+    $monitor = Monitor::factory()->create([
+        'target' => 'https://example.test/health',
+        'expected_body_contains' => 'Benvenuto',
+    ]);
+
+    app(MonitorProbe::class)->check($monitor);
+})->throws(MonitorCheckFailed::class, 'Corpo della risposta senza «Benvenuto»');
+
+it('non guarda il corpo quando il testo atteso non e configurato', function () {
+    Http::fake(['https://example.test/*' => Http::response('qualunque cosa', 200)]);
+
+    $monitor = Monitor::factory()->create([
+        'target' => 'https://example.test/health',
+        'expected_body_contains' => null,
     ]);
 
     app(MonitorProbe::class)->check($monitor);

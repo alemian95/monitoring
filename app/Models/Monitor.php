@@ -98,7 +98,7 @@ class Monitor extends Model
         return [
             'type' => MonitorType::class,
             'port' => 'integer',
-            'expected_status' => 'integer',
+            'expected_statuses' => 'array',
             'timeout_seconds' => 'integer',
             'interval_minutes' => 'integer',
             'is_active' => 'boolean',
