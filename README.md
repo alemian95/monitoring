@@ -4,7 +4,9 @@ Controlla domini (status HTTP fra quelli accettati, testo atteso nel corpo,
 tempo di risposta sotto soglia) e VPS (porta TCP) su un intervallo per-target
 e avvisa un canale Discord quando un target è giù, con recovery quando torna
 su. Di ogni check restano status, tempo di risposta e motivo del fallimento.
-Gestione dei target via Filament (`/admin`).
+Finché un target resta giù l'alert si ripete ogni ora. Un comando giornaliero
+avvisa quattordici giorni prima che scada un certificato TLS. Gestione dei
+target via Filament (`/admin`).
 
 ## In sviluppo
 
@@ -18,15 +20,19 @@ di lui nessun check parte.
 
 ## In produzione
 
-Servono due processi, oltre all'app:
+Serve una entry cron che invochi `php artisan schedule:run` ogni minuto: il
+queue worker lo avvia lo scheduler stesso, un minuto alla volta.
 
-- una entry cron che invochi `php artisan schedule:run` ogni minuto;
-- un `php artisan queue:work` persistente (es. Supervisor), che esegue i check e i retry.
+Due variabili in `.env`:
 
-E una variabile in `.env`: `DISCORD_ALERT_WEBHOOK`.
+- `DISCORD_ALERT_WEBHOOK` — il canale dove arrivano gli alert;
+- `HEALTHCHECKS_PING_URL` — opzionale ma consigliata: lo scheduler la pinga a
+  ogni giro riuscito, e se i ping smettono è il servizio esterno (es.
+  healthchecks.io) ad avvisare. È l'unico modo per accorgersi che è morto il
+  monitoring e non i target.
 
-**Senza il worker attivo i job restano in coda in silenzio: nessun check
-viene eseguito e nessun alert parte, senza errori visibili.**
+**Senza cron non parte niente, e in silenzio: nessun check, nessun alert,
+nessun errore visibile.**
 
 Dettagli architetturali, policy di retry e note operative:
 [`docs/superpowers/specs/2026-09-08-monitoring-uptime-design.md`](docs/superpowers/specs/2026-09-08-monitoring-uptime-design.md).

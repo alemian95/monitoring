@@ -28,6 +28,14 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    /*
+     * Dead man's switch: URL da pingare a ogni giro dello scheduler (es.
+     * healthchecks.io). Vuoto significa nessun ping e nessun guardiano.
+     */
+    'healthchecks' => [
+        'ping_url' => env('HEALTHCHECKS_PING_URL'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

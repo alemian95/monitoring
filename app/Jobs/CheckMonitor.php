@@ -4,18 +4,27 @@ namespace App\Jobs;
 
 use App\Exceptions\MonitorCheckFailed;
 use App\Models\Monitor;
+use App\Support\AlertChannel;
 use App\Support\MonitorProbe;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Support\Facades\Log;
-use Spatie\DiscordAlerts\Facades\DiscordAlert;
+use Illuminate\Support\Facades\Cache;
 use Throwable;
 
 class CheckMonitor implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
+
+    /**
+     * Ogni quanto ripetere l'alert finché il target resta giù.
+     *
+     * ponytail: costante e non colonna per-monitor — la cadenza dei promemoria
+     * è una policy di chi riceve gli alert, non una proprietà del target. Se
+     * servirà differenziarla, diventa una colonna.
+     */
+    private const REALERT_AFTER_MINUTES = 60;
 
     /** Un check più tre retry. */
     public int $tries = 4;
@@ -63,6 +72,10 @@ class CheckMonitor implements ShouldBeUnique, ShouldQueue
         );
 
         if ($wasDown) {
+            // Il recovery chiude la finestra dei promemoria: la prossima caduta
+            // deve allertare subito, non aspettare la scadenza di questa chiave.
+            Cache::forget($this->alertKey());
+
             $this->alert("✅ **{$this->monitor->name}** è tornato su — {$this->monitor->target}");
         }
     }
@@ -93,8 +106,6 @@ class CheckMonitor implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $wasUp = $this->monitor->is_up !== false;
-
         $this->monitor->update([
             'is_up' => false,
             'last_failure_reason' => $exception->getMessage(),
@@ -109,34 +120,28 @@ class CheckMonitor implements ShouldBeUnique, ShouldQueue
             failureReason: $exception->getMessage(),
         );
 
-        if ($wasUp) {
+        // Primo alert e promemoria sono la stessa riga: `add` scrive solo se la
+        // chiave non c'è, e la chiave scade da sola. Così un target caduto alle
+        // tre di notte continua a farsi sentire, senza una colonna in più da
+        // tenere allineata allo stato.
+        if (Cache::add($this->alertKey(), true, now()->addMinutes(self::REALERT_AFTER_MINUTES))) {
             $this->alert(
                 "🔴 **{$this->monitor->name}** è giù — {$this->monitor->target}".PHP_EOL.$exception->getMessage()
             );
         }
     }
 
+    private function alertKey(): string
+    {
+        return "monitor-down:{$this->monitor->id}";
+    }
+
     /**
-     * Manda l'alert su Discord, se c'è un canale dove mandarlo.
-     *
-     * Senza webhook configurato `DiscordAlert::message()` lancerebbe
-     * `WebhookDoesNotExist`, facendo fallire un job il cui lavoro vero — la
-     * scrittura dello stato del monitor — è già andato a buon fine. La
-     * guardia evita il fallimento ma non il silenzio: un webhook mancante
-     * resta visibile nei log, perché in un sistema d'allerta un canale
-     * scollegato è esattamente ciò che non deve passare inosservato.
+     * Risolto qui e non iniettato nel costruttore: il job viene serializzato in
+     * coda, e `failed()` non riceve dipendenze.
      */
     private function alert(string $message): void
     {
-        if (blank(config('discord-alerts.webhook_urls.default'))) {
-            Log::warning('Alert non inviato: webhook Discord non configurato.', [
-                'monitor' => $this->monitor->name,
-                'message' => $message,
-            ]);
-
-            return;
-        }
-
-        DiscordAlert::message($message);
+        app(AlertChannel::class)->send($message);
     }
 }

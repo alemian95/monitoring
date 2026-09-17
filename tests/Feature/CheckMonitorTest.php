@@ -66,13 +66,38 @@ it('manda l alert e segna giù al fallimento definitivo', function () {
         ->and($monitor->last_failure_reason)->toBe('HTTP 500, atteso 200');
 });
 
-it('non ri-allerta un monitor già noto come giù', function () {
+it('non ri-allerta finché non è passato l intervallo di promemoria', function () {
     $monitor = Monitor::factory()->create(['is_up' => false]);
 
+    (new CheckMonitor($monitor))->failed(new MonitorCheckFailed('giù'));
+    $this->travel(30)->minutes();
     (new CheckMonitor($monitor))->failed(new MonitorCheckFailed('ancora giù'));
 
-    Queue::assertNotPushed(SendDiscordAlert::class);
+    Queue::assertPushed(SendDiscordAlert::class, 1);
     expect($monitor->refresh()->last_failure_reason)->toBe('ancora giù');
+});
+
+it('ri-allerta quando il target resta giù oltre l intervallo di promemoria', function () {
+    $monitor = Monitor::factory()->create(['is_up' => false]);
+
+    (new CheckMonitor($monitor))->failed(new MonitorCheckFailed('giù'));
+    $this->travel(61)->minutes();
+    (new CheckMonitor($monitor))->failed(new MonitorCheckFailed('ancora giù'));
+
+    Queue::assertPushed(SendDiscordAlert::class, 2);
+});
+
+it('dopo un recovery la caduta successiva allerta subito', function () {
+    $monitor = Monitor::factory()->create(['is_up' => true]);
+    $this->mock(MonitorProbe::class)->shouldReceive('check')->once()->andReturn(new ProbeResult(42, 200));
+
+    (new CheckMonitor($monitor))->failed(new MonitorCheckFailed('giù'));
+    (new CheckMonitor($monitor))->handle(app(MonitorProbe::class));
+    (new CheckMonitor($monitor))->failed(new MonitorCheckFailed('di nuovo giù'));
+
+    // Alert, recovery, alert: senza il `forget` sul recovery il terzo messaggio
+    // resterebbe dentro la finestra dei promemoria e non partirebbe.
+    Queue::assertPushed(SendDiscordAlert::class, 3);
 });
 
 it('programma il prossimo check anche quando fallisce', function () {

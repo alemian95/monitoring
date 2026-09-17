@@ -152,6 +152,8 @@ class Monitor extends Model
             'is_up' => 'boolean',
             'next_check_at' => 'datetime',
             'last_checked_at' => 'datetime',
+            'certificate_expires_at' => 'datetime',
+            'certificate_alerted_at' => 'datetime',
         ];
     }
 }

@@ -3,17 +3,33 @@
 use App\Jobs\CheckMonitor;
 use App\Models\Monitor;
 use App\Models\MonitorCheck;
-use Illuminate\Foundation\Inspiring;
-use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schedule;
 
-Artisan::command('inspire', function () {
-    $this->comment(Inspiring::quote());
-})->purpose('Display an inspiring quote');
-
+// Dead man's switch: se lo scheduler — o l'intero server — muore, non arriva
+// piu' niente, e il silenzio e' indistinguibile da "tutto ok". Il ping a ogni
+// giro sposta quell'allarme fuori di qui, dove puo' ancora partire.
+//
+// Senza URL configurato non si pinga e non si rompe nulla: resta il monitoring
+// di sempre, solo senza guardiano.
 Schedule::call(function (): void {
     Monitor::due()->each(fn (Monitor $monitor) => CheckMonitor::dispatch($monitor));
-})->everyMinute()->name('dispatch-monitor-checks')->withoutOverlapping(2);
+})
+    ->everyMinute()
+    ->name('dispatch-monitor-checks')
+    ->withoutOverlapping(2)
+    ->onSuccess(function (): void {
+        if (filled($url = config('services.healthchecks.ping_url'))) {
+            // `rescue` perche' il guardiano irraggiungibile non deve diventare
+            // lui il guasto: l'errore va segnalato, non propagato addosso a un
+            // giro di check gia' andato a buon fine.
+            rescue(fn () => Http::get($url));
+        }
+    });
+
+// Un certificato cambia una volta ogni tre mesi: una lettura al giorno basta,
+// e il comando resta lanciabile a mano quando serve.
+Schedule::command('monitor:certificates')->daily();
 
 Schedule::command('queue:prune-failed --hours=168')->daily();
 
