@@ -23,3 +23,10 @@ Schedule::command('queue:prune-failed --hours=168')->daily();
 Schedule::call(function (): void {
     MonitorCheck::where('checked_at', '<', now()->subDays(30))->delete();
 })->daily()->name('prune-monitor-checks');
+
+// In produzione non gira un supervisor: il worker lo avvia lo scheduler stesso,
+// un minuto alla volta, e si spegne appena la coda e' vuota.
+Schedule::command('queue:work --stop-when-empty --max-time=55 --tries=3')
+    ->everyMinute()
+    ->runInBackground()
+    ->withoutOverlapping(2);
