@@ -1,23 +1,10 @@
 # TODO
 
 Quello che resta. Fatti e in `master`: status code multipli, corpo atteso,
-soglia sul tempo di risposta, storico per singolo check, dead man's switch,
-re-alert orario finche' il target resta giu', scadenza dei certificati TLS.
-
-## L'alert arriva a ~4 minuti, non a ~60 secondi — da progettare
-
-Da quando il worker lo avvia lo scheduler, la catena di retry non sta piu'
-dentro un solo giro: `queue:work --stop-when-empty` esce appena non c'e' un job
-*disponibile*, e un retry in backoff ha `available_at` nel futuro. Il worker si
-spegne, il tentativo dopo aspetta il worker del minuto successivo, e i quattro
-tentativi si spalmano su ~4 minuti — mentre il docblock di
-`CheckMonitor::$backoff` promette ancora ~60 secondi.
-
-Una riga lo chiuderebbe: `--stop-when-empty-for=25`, cioe' piu' del backoff di
-20 secondi, tiene il worker vivo attraverso la ritenta. Ma cambia il profilo
-del processo — da "si spegne subito" a "resta acceso quasi tutto il minuto" —
-e quello va deciso, non subito. Finche' non e' deciso, il docblock e il test
-sul contratto di retry descrivono l'intenzione, non il comportamento.
+soglia sul tempo di risposta, storico per singolo check, dead man's switch
+(ping a ogni giro riuscito e su ogni job fallito), re-alert orario finche' il
+target resta giu', scadenza dei certificati TLS, e la catena di retry riportata
+dentro un solo giro dello scheduler.
 
 ## Evitare gli alert durante deploy e manutenzione — da valutare
 

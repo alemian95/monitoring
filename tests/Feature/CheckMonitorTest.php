@@ -117,12 +117,12 @@ it('allerta al primo fallimento di un monitor mai controllato', function () {
 });
 
 it(
-    "protegge il contratto di retry del design: 3 retry a 20 secondi tengono l'alert entro ~60s da un nginx reload",
+    "protegge il contratto di retry del design: 4 tentativi a 5/10/20 secondi tengono l'alert entro ~35s da un nginx reload",
     function () {
         $job = new CheckMonitor(Monitor::factory()->create());
 
         expect($job->tries)->toBe(4)
-            ->and($job->backoff)->toBe(20);
+            ->and($job->backoff())->toBe([5, 10, 20]);
     }
 );
 

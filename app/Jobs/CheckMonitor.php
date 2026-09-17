@@ -29,8 +29,18 @@ class CheckMonitor implements ShouldBeUnique, ShouldQueue
     /** Un check più tre retry. */
     public int $tries = 4;
 
-    /** Secondi tra i retry: l'alert parte a ~60 secondi dal primo fallimento. */
-    public int $backoff = 20;
+    /**
+     * Secondi fra i tentativi, crescenti. Un nginx che ricarica si risolve nei
+     * primi secondi e non arriva mai a fare rumore; un target davvero giu'
+     * consuma tutti e quattro i tentativi, e l'alert parte a ~35 secondi dal
+     * primo errore invece che a ~60.
+     *
+     * @return list<int>
+     */
+    public function backoff(): array
+    {
+        return [5, 10, 20];
+    }
 
     /**
      * Il lock dura più della catena di retry, così lo scheduler non
