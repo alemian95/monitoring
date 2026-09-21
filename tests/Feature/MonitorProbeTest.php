@@ -1,10 +1,21 @@
 <?php
 
+use App\Enums\DnsRecordType;
 use App\Exceptions\MonitorCheckFailed;
 use App\Models\Monitor;
+use App\Support\DnsResolver;
 use App\Support\MonitorProbe;
 use App\Support\ProbeResult;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+
+/**
+ * @param  list<array<string, mixed>>  $records
+ */
+function fakeResolver(array $records): void
+{
+    test()->mock(DnsResolver::class)->shouldReceive('records')->andReturn($records);
+}
 
 it('passa quando lo status HTTP è quello atteso', function () {
     Http::fake(['https://example.test/*' => Http::response('ok', 200)]);
@@ -226,3 +237,101 @@ it('porta status e tempo dentro l eccezione, non solo nel messaggio', function (
 
     $this->fail('il probe non ha lanciato');
 });
+
+it('usa metodo, header e corpo configurati', function () {
+    Http::fake(['https://example.test/*' => Http::response('', 200)]);
+
+    $monitor = Monitor::factory()->create([
+        'target' => 'https://example.test/webhook',
+        'http_method' => 'POST',
+        'http_headers' => ['Authorization' => 'Bearer segreto'],
+        'http_body' => '{"ping":true}',
+    ]);
+
+    app(MonitorProbe::class)->check($monitor);
+
+    Http::assertSent(fn ($request): bool => $request->method() === 'POST'
+        && $request->hasHeader('Authorization', 'Bearer segreto')
+        && $request->body() === '{"ping":true}');
+});
+
+it('cifra gli header a riposo', function () {
+    $monitor = Monitor::factory()->create(['http_headers' => ['Authorization' => 'Bearer segreto']]);
+
+    $stored = (string) DB::table('monitors')->where('id', $monitor->id)->value('http_headers');
+
+    expect($stored)->not->toContain('segreto')
+        ->and($monitor->fresh()->http_headers)->toBe(['Authorization' => 'Bearer segreto']);
+});
+
+it('passa quando il record DNS esiste', function () {
+    fakeResolver([['host' => 'example.test', 'type' => 'A', 'ip' => '93.184.216.34']]);
+
+    app(MonitorProbe::class)->check(Monitor::factory()->dns()->create());
+})->throwsNoExceptions();
+
+it('lancia quando il record DNS non esiste', function () {
+    fakeResolver([]);
+
+    app(MonitorProbe::class)->check(Monitor::factory()->dns()->create());
+})->throws(MonitorCheckFailed::class, 'Nessun record A per example.test');
+
+it('lancia quando il record DNS punta altrove', function () {
+    fakeResolver([['host' => 'example.test', 'type' => 'A', 'ip' => '10.0.0.9']]);
+
+    app(MonitorProbe::class)->check(Monitor::factory()->dns()->create([
+        'expected_body_contains' => '93.184.216.34',
+    ]));
+})->throws(MonitorCheckFailed::class, 'Record A «10.0.0.9» senza «93.184.216.34»');
+
+it('non confonde il tipo del record con il suo valore', function () {
+    fakeResolver([['host' => 'example.test', 'type' => 'A', 'ip' => '10.0.0.9']]);
+
+    app(MonitorProbe::class)->check(Monitor::factory()->dns()->create([
+        'expected_body_contains' => 'A',
+    ]));
+})->throws(MonitorCheckFailed::class, 'senza «A»');
+
+/**
+ * Il resolver vero, non il mock: garantisce che una query fallita diventi una
+ * lista vuota e non un `false` da controllare a valle.
+ *
+ * Il nome e' vuoto e non inesistente perche' molti resolver — quelli degli ISP
+ * in testa — rispondono a un NXDOMAIN con un indirizzo di cortesia, e il test
+ * passerebbe o no a seconda della rete.
+ */
+it('traduce una query DNS fallita in una lista vuota', function () {
+    expect(app(DnsResolver::class)->records('', DnsRecordType::A))->toBe([]);
+});
+
+it('passa quando il push monitor ha pingato di recente', function () {
+    app(MonitorProbe::class)->check(Monitor::factory()->push()->create([
+        'grace_minutes' => 60,
+        'last_ping_at' => now()->subMinutes(59),
+    ]));
+})->throwsNoExceptions();
+
+it('non riporta un tempo di risposta per il push monitor', function () {
+    $result = app(MonitorProbe::class)->check(Monitor::factory()->push()->create());
+
+    expect($result->responseTimeMs)->toBeNull()
+        ->and($result->statusCode)->toBeNull();
+});
+
+it('lancia quando il push monitor e in ritardo', function () {
+    app(MonitorProbe::class)->check(Monitor::factory()->push()->create([
+        'grace_minutes' => 60,
+        'last_ping_at' => now()->subMinutes(61),
+    ]));
+})->throws(MonitorCheckFailed::class, 'atteso ogni 60 min');
+
+it('lancia quando il push monitor non ha mai pingato', function () {
+    app(MonitorProbe::class)->check(Monitor::factory()->push()->create(['last_ping_at' => null]));
+})->throws(MonitorCheckFailed::class, 'Nessun ping ricevuto');
+
+it('lancia subito quando il job si e dichiarato fallito, anche se il ping e fresco', function () {
+    app(MonitorProbe::class)->check(Monitor::factory()->push()->create([
+        'last_ping_at' => now(),
+        'last_ping_failure' => 'backup: disco pieno',
+    ]));
+})->throws(MonitorCheckFailed::class, 'backup: disco pieno');

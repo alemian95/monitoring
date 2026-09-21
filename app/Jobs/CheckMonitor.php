@@ -86,7 +86,7 @@ class CheckMonitor implements ShouldBeUnique, ShouldQueue
             // deve allertare subito, non aspettare la scadenza di questa chiave.
             Cache::forget($this->alertKey());
 
-            $this->alert("✅ **{$this->monitor->name}** è tornato su — {$this->monitor->target}");
+            $this->alert("✅ **{$this->monitor->name}** è tornato su{$this->targetSuffix()}");
         }
     }
 
@@ -136,9 +136,18 @@ class CheckMonitor implements ShouldBeUnique, ShouldQueue
         // tenere allineata allo stato.
         if (Cache::add($this->alertKey(), true, now()->addMinutes(self::REALERT_AFTER_MINUTES))) {
             $this->alert(
-                "🔴 **{$this->monitor->name}** è giù — {$this->monitor->target}".PHP_EOL.$exception->getMessage()
+                "🔴 **{$this->monitor->name}** è giù{$this->targetSuffix()}".PHP_EOL.$exception->getMessage()
             );
         }
+    }
+
+    /**
+     * L'indirizzo del target, quando ce n'e' uno: un push monitor sorveglia un
+     * job, che ha un nome e non un indirizzo da contattare.
+     */
+    private function targetSuffix(): string
+    {
+        return filled($this->monitor->target) ? " — {$this->monitor->target}" : '';
     }
 
     private function alertKey(): string

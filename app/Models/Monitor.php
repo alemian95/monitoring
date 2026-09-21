@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\DnsRecordType;
 use App\Enums\MonitorType;
 use App\Enums\MonitorVisibility;
 use App\Enums\UptimeRange;
@@ -13,6 +14,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 
 class Monitor extends Model
 {
@@ -20,6 +22,18 @@ class Monitor extends Model
     use HasFactory;
 
     protected $guarded = [];
+
+    /**
+     * Il token di ping nasce con il monitor, qualunque sia il tipo: cosi'
+     * cambiare tipo a un monitor esistente non richiede di generarlo al volo, e
+     * `pingUrl()` resta una lettura pura.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (self $monitor): void {
+            $monitor->ping_token ??= Str::random(40);
+        });
+    }
 
     /**
      * @return HasMany<MonitorCheck, $this>
@@ -63,6 +77,19 @@ class Monitor extends Model
         return $expiresInDays === null
             ? URL::signedRoute('status.monitor', $this)
             : URL::temporarySignedRoute('status.monitor', now()->addDays($expiresInDays), $this);
+    }
+
+    /**
+     * L'indirizzo che il job esterno deve chiamare per dire "sono vivo", e con
+     * il suffisso `/fail` per dire "sono andato male".
+     *
+     * Un token e non un URL firmato: questo indirizzo finisce nella crontab di
+     * qualcun altro, e se trapela deve poter essere revocato senza toccare
+     * `APP_KEY`. Rigenerarlo invalida il vecchio, ed e' l'unica via.
+     */
+    public function pingUrl(bool $failure = false): string
+    {
+        return route('monitor.ping', ['token' => $this->ping_token] + ($failure ? ['status' => 'fail'] : []));
     }
 
     /**
@@ -179,16 +206,22 @@ class Monitor extends Model
     {
         return [
             'type' => MonitorType::class,
+            'dns_record_type' => DnsRecordType::class,
             'visibility' => MonitorVisibility::class,
             'port' => 'integer',
             'expected_statuses' => 'array',
+            // Un header `Authorization` e' una credenziale: cifrata a riposo,
+            // cosi' un dump del database non la regala.
+            'http_headers' => 'encrypted:array',
             'timeout_seconds' => 'integer',
             'max_response_time_ms' => 'integer',
             'interval_minutes' => 'integer',
+            'grace_minutes' => 'integer',
             'is_active' => 'boolean',
             'is_up' => 'boolean',
             'next_check_at' => 'datetime',
             'last_checked_at' => 'datetime',
+            'last_ping_at' => 'datetime',
             'certificate_expires_at' => 'datetime',
             'certificate_alerted_at' => 'datetime',
         ];

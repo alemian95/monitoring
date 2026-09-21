@@ -1,13 +1,40 @@
 # Monitoring
 
-Controlla domini (status HTTP fra quelli accettati, testo atteso nel corpo,
-tempo di risposta sotto soglia) e VPS (porta TCP) su un intervallo per-target
-e avvisa un canale Discord quando un target è giù, con recovery quando torna
-su. Di ogni check restano status, tempo di risposta e motivo del fallimento.
-Dal primo errore all'alert passano ~35 secondi, il tempo di quattro tentativi.
-Finché un target resta giù l'alert si ripete ogni ora. Un comando giornaliero
+Controlla quattro tipi di target su un intervallo per-target e avvisa un canale
+Discord quando uno e' giu', con recovery quando torna su:
+
+- **HTTP** — metodo, header e corpo a scelta; status fra quelli accettati,
+  testo atteso nel corpo, tempo di risposta sotto soglia;
+- **TCP** — la porta accetta connessioni;
+- **DNS** — il record esiste e, volendo, contiene ancora il valore atteso;
+- **push** — il contrario degli altri: un job esterno chiama noi, e se smette
+  di farlo e' lui a risultare giu'.
+
+Di ogni check restano status, tempo di risposta e motivo del fallimento. Dal
+primo errore all'alert passano ~35 secondi, il tempo di quattro tentativi.
+Finche' un target resta giu' l'alert si ripete ogni ora. Un comando giornaliero
 avvisa quattordici giorni prima che scada un certificato TLS. Gestione dei
 target via Filament (`/admin`), pagina di stato per singolo servizio.
+
+## Push monitor
+
+Per sorvegliare quello che nessuno puo' interrogare da fuori: un backup
+notturno, un import, una coda. Il monitor espone due indirizzi, che l'azione
+*URL di ping* nella tabella mostra:
+
+```bash
+curl -fsS https://monitoring.example/ping/TOKEN                   # sono vivo
+curl -fsS https://monitoring.example/ping/TOKEN/fail -d "$MOTIVO" # sono andato male
+```
+
+*Attendo un ping ogni* dice quanto puo' passare fra due ping prima che il job
+risulti giu'; e' un'altra cosa da *ogni quanto verifico il ritardo*, che e'
+solo la frequenza con cui ce ne accorgiamo. Il corpo della richiesta a `/fail`
+diventa il motivo del fallimento nell'alert.
+
+Il segreto e' il token nell'URL, non una firma: finisce nella crontab di
+qualcun altro, e se trapela va revocato da solo — l'azione *Rigenera URL di
+ping* lo sostituisce e spegne il vecchio.
 
 ## Pagina di stato
 

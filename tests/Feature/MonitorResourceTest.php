@@ -1,7 +1,9 @@
 <?php
 
+use App\Enums\DnsRecordType;
 use App\Enums\MonitorType;
 use App\Filament\Resources\Monitors\Pages\CreateMonitor;
+use App\Filament\Resources\Monitors\Pages\EditMonitor;
 use App\Filament\Resources\Monitors\Pages\ListMonitors;
 use App\Jobs\CheckMonitor;
 use App\Models\Monitor;
@@ -70,4 +72,47 @@ it('non espone una rotta di registrazione globale, come quella montata da uno st
     expect(Route::has('register'))->toBeFalse();
 
     $this->get('/register')->assertNotFound();
+});
+
+it('mostra i campi giusti per DNS e per il push monitor', function () {
+    $page = Livewire::test(CreateMonitor::class);
+
+    $page->fillForm(['type' => MonitorType::Dns->value])
+        ->assertFormFieldVisible('dns_record_type')
+        ->assertFormFieldVisible('expected_body_contains')
+        ->assertFormFieldHidden('expected_statuses')
+        ->assertFormFieldHidden('http_method');
+
+    $page->fillForm(['type' => MonitorType::Push->value])
+        ->assertFormFieldVisible('grace_minutes')
+        // Non c'e' niente da contattare: nessun indirizzo, nessun timeout.
+        ->assertFormFieldHidden('target')
+        ->assertFormFieldHidden('timeout_seconds');
+});
+
+it('mostra il corpo della richiesta solo per i metodi che ne hanno uno', function () {
+    $page = Livewire::test(CreateMonitor::class);
+
+    $page->fillForm(['type' => MonitorType::Http->value, 'http_method' => 'GET'])
+        ->assertFormFieldHidden('http_body');
+
+    $page->fillForm(['http_method' => 'POST'])
+        ->assertFormFieldVisible('http_body');
+});
+
+it('rilegge header cifrati e tipo di record nel form di modifica', function () {
+    $http = Monitor::factory()->create([
+        'http_method' => 'POST',
+        'http_headers' => ['Authorization' => 'Bearer segreto'],
+    ]);
+    $dns = Monitor::factory()->dns()->create();
+
+    Livewire::test(EditMonitor::class, ['record' => $http->getRouteKey()])
+        ->assertFormSet([
+            'http_method' => 'POST',
+            'http_headers' => ['Authorization' => 'Bearer segreto'],
+        ]);
+
+    Livewire::test(EditMonitor::class, ['record' => $dns->getRouteKey()])
+        ->assertFormSet(['dns_record_type' => DnsRecordType::A]);
 });

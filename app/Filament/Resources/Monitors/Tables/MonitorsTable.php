@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Monitors\Tables;
 
+use App\Enums\MonitorType;
 use App\Enums\MonitorVisibility;
 use App\Enums\UptimeLevel;
 use App\Filament\Exports\MonitorCheckExporter;
@@ -18,6 +19,7 @@ use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\ToggleColumn;
 use Filament\Tables\Table;
+use Illuminate\Support\Str;
 
 class MonitorsTable
 {
@@ -95,6 +97,35 @@ class MonitorsTable
                         Notification::make()
                             ->title('Link generato')
                             ->body($record->statusUrl($days === 0 ? null : $days))
+                            ->success()
+                            ->persistent()
+                            ->send();
+                    }),
+                Action::make('pingUrl')
+                    ->label('URL di ping')
+                    ->icon('heroicon-o-inbox-arrow-down')
+                    ->visible(fn (Monitor $record): bool => $record->type === MonitorType::Push)
+                    ->action(function (Monitor $record): void {
+                        Notification::make()
+                            ->title('Indirizzi di ping')
+                            ->body($record->pingUrl().PHP_EOL.'Fallimento: '.$record->pingUrl(failure: true))
+                            ->success()
+                            ->persistent()
+                            ->send();
+                    }),
+                Action::make('rotatePingToken')
+                    ->label('Rigenera URL di ping')
+                    ->icon('heroicon-o-arrow-path-rounded-square')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->modalDescription('Il vecchio indirizzo smette di funzionare: va sostituito ovunque sia configurato.')
+                    ->visible(fn (Monitor $record): bool => $record->type === MonitorType::Push)
+                    ->action(function (Monitor $record): void {
+                        $record->update(['ping_token' => Str::random(40)]);
+
+                        Notification::make()
+                            ->title('Nuovo indirizzo di ping')
+                            ->body($record->pingUrl())
                             ->success()
                             ->persistent()
                             ->send();

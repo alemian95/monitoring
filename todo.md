@@ -5,6 +5,11 @@ Better Stack, Zabbix e Checkly. Non tutto va colmato: dove i grandi vincono
 per struttura e non per righe di codice, replicarli male e' peggio che non
 averli.
 
+Fatti nel frattempo: il **push monitor** (una rotta con token che i job
+esterni chiamano, e un alert se smettono o se dichiarano `/fail`), il **DNS**
+(il record esiste e contiene ancora il valore atteso) e l'**HTTP oltre il
+GET** (metodo, header cifrati a riposo, corpo).
+
 Fatta nel frattempo: la pagina di stato. Una pagina per servizio, con la
 visibilita' decisa sul singolo (pannello / in chiaro / link firmato a
 scadenza); fuori dal pannello non esiste un elenco, cosi' il link che mandi a
@@ -12,19 +17,6 @@ un cliente mostra il suo servizio e non rivela gli altri. Il riepilogo di tutti
 i servizi e' su `/status`, dietro il login.
 
 ## Da fare
-
-### Piu' protocolli
-
-Oggi solo HTTP e TCP. Mancano, in ordine di utilita' reale:
-
-- **push monitor** (heartbeat in ingresso): una rotta che un cron esterno
-  chiama, e un alert se non chiama piu'. Paradossale che manchi, visto che
-  questo software un heartbeat lo *manda* gia' (`Support\Heartbeat`) ma non
-  sa riceverne. Una rotta piu' una colonna.
-- **DNS**: un record che cambia o sparisce non lo vede nessun check HTTP.
-- **ICMP**: il ping vero richiede `exec()` e privilegi, ed e' filtrato su
-  molti hosting — vedi la nota gia' scritta in `MonitorProbe::checkTcp()`.
-- SMTP/IMAP, gRPC: solo se compaiono target che li parlano.
 
 ### API, multi-utente, report
 
@@ -54,6 +46,13 @@ soglia o come segnale in piu' accanto ad essa.
 
 ## In valutazione
 
+### Protocolli che restano fuori
+
+- **ICMP**: il ping vero richiede `exec()` e privilegi, ed e' filtrato su
+  molti hosting — vedi la nota gia' scritta in `MonitorProbe::checkTcp()`.
+- SMTP/IMAP, gRPC: il TCP connect dice gia' che la porta risponde; l'handshake
+  vero solo se compaiono target che lo pretendono.
+
 ### Punto di osservazione singolo
 
 La lacuna piu' grave in assoluto. Un solo nodo, una sola rete: un problema di
@@ -76,16 +75,6 @@ occupando io") che zittisce i promemoria. Il re-alert orario in
 Il pezzo economico e' il secondo canale (una mail dopo N promemoria inevasi:
 Discord alle tre di notte lo silenzi, la mail resta). L'acknowledgement invece
 vuole interazione — un bot Discord — ed e' un ordine di grandezza sopra.
-
-### HTTP oltre il GET
-
-`MonitorProbe::checkHttp()` fa `Http::timeout(...)->get($target)`: niente
-metodo, niente header, niente body. Un endpoint che vuole un `Authorization`
-non e' monitorabile.
-
-Nel confronto era il primo per valore/riga — tre colonne e un pass-through a
-`Http::` — ed e' il tetto piu' basso della superficie HTTP attuale. Resta qui
-finche' non compare un target che lo richiede davvero.
 
 ### Check multi-step
 
