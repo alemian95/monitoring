@@ -2,7 +2,6 @@
 
 use App\Jobs\CheckMonitor;
 use App\Models\Monitor;
-use App\Models\MonitorCheck;
 use App\Support\Heartbeat;
 use Illuminate\Support\Facades\Schedule;
 
@@ -26,12 +25,10 @@ Schedule::command('monitor:latency')->hourly();
 
 Schedule::command('queue:prune-failed --hours=168')->daily();
 
-// Retention dello storico dei check: 30 giorni. A intervallo di un minuto sono
-// ~1.440 righe al giorno per target, quindi senza potatura la tabella cresce
-// senza limite.
-Schedule::call(function (): void {
-    MonitorCheck::where('checked_at', '<', now()->subDays(30))->delete();
-})->daily()->name('prune-monitor-checks');
+// Retention dello storico dei check: la finestra sta in
+// `config/monitoring.php`, perche' e' una policy e non un dettaglio di questa
+// riga.
+Schedule::command('monitor:prune-checks')->daily();
 
 // In produzione non gira un supervisor: il worker lo avvia lo scheduler stesso,
 // un minuto alla volta.

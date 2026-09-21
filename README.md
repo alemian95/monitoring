@@ -51,9 +51,24 @@ motivo: «TCP 10.0.0.5:5432 — Connection refused» racconta a un estraneo com'
 fatta la rete dentro, mentre quanto e' durato lo puo' sapere, perche' lo ha
 subito.
 
-Il tetto e' la retention: 30 giorni, quindi un SLA mensile si legge e uno
-annuale no. Annotare un post-mortem richiederebbe invece una tabella, perche'
-una nota va appesa a qualcosa che resta.
+Annotare un post-mortem richiederebbe invece una tabella, perche' una nota va
+appesa a qualcosa che resta.
+
+## Quanto storico
+
+`MONITOR_RETENTION_DAYS`, un anno di default. A un check al minuto una riga
+costa una settantina di byte fra tabella e indice: circa **37 MB per target
+all'anno**, cioe' poco piu' di un centinaio di megabyte per un'installazione
+tipica. Non abbastanza da giustificare una tabella di aggregati, che e' il
+motivo per cui non c'e'.
+
+Le finestre di lettura arrivano all'anno (ora, giorno, settimana, mese,
+trimestre, anno) e le query sono limitate dalla finestra, non dalla
+dimensione della tabella: un anno di storico non rallenta un grafico su
+trenta giorni. La retention va tenuta almeno pari alla finestra piu' lunga,
+o i grafici mostrano buchi dove i dati sono stati potati — e alzarla non crea
+dati all'indietro, quindi il primo anno completo arriva un anno dopo averlo
+deciso.
 
 ## Rallentamenti
 

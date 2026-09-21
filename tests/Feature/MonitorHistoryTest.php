@@ -153,7 +153,7 @@ it('raggruppa i check nel bucket giusto su ogni finestra', function () {
     }
 });
 
-it('espone le quattro finestre come filtro del grafico', function () {
+it('espone tutte le finestre come filtro del grafico', function () {
     $this->actingAs(User::factory()->create());
     $monitor = Monitor::factory()->create();
 
@@ -161,7 +161,9 @@ it('espone le quattro finestre come filtro del grafico', function () {
         ->assertSee('Ultima ora')
         ->assertSee('Ultime 24 ore')
         ->assertSee('Ultimi 7 giorni')
-        ->assertSee('Ultimi 30 giorni');
+        ->assertSee('Ultimi 30 giorni')
+        ->assertSee('Ultimi 3 mesi')
+        ->assertSee('Ultimo anno');
 });
 
 it('cambia i dati quando si cambia finestra', function () {
@@ -175,6 +177,10 @@ it('cambia i dati quando si cambia finestra', function () {
 
     $chart->set('filter', 'week');
     expect(invade($chart->instance())->getCachedData()['labels'])->toHaveCount(7);
+
+    // Dodici mesi solari, non 365 bucket giornalieri.
+    $chart->set('filter', 'year');
+    expect(invade($chart->instance())->getCachedData()['labels'])->toHaveCount(12);
 });
 
 it('fissa l asse verticale a 100, che è il massimo che una percentuale può valere', function () {

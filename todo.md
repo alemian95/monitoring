@@ -7,6 +7,9 @@ averli.
 
 ## Fatto nel frattempo
 
+- **Storico di un anno** — retention in `MONITOR_RETENTION_DAYS`, piu' le
+  finestre trimestre e anno. Niente rollup: le righe grezze costano ~37 MB per
+  target all'anno.
 - **Timeline degli incidenti** — lo storico letto come eventi invece che come
   righe, nel pannello (con il motivo) e sulla pagina di stato (senza). Nessuna
   tabella: sono serie consecutive di check falliti.
@@ -22,6 +25,22 @@ averli.
   non esiste un elenco, cosi' il link che mandi a un cliente mostra il suo
   servizio e non rivela gli altri; il riepilogo di tutti i servizi e' su
   `/status`, dietro il login.
+
+## Da fare
+
+### SQL specifico di SQLite, ma la produzione non usa SQLite
+
+`uptimeSeries()` e `responseTimeSeries()` raggruppano con `strftime`, che
+fuori da SQLite non esiste: su MySQL e' `DATE_FORMAT`, su Postgres `to_char`,
+con token diversi. `UptimeRange::sqlFormat()` e' il punto unico da tradurre —
+era gia' marcato come tale, ma da nota diventa lavoro nel momento in cui il
+database di produzione e' un altro.
+
+Su Postgres si aggiunge un secondo punto: `avg(is_up)` e `sum(is_up)` su una
+colonna booleana non sono ammessi e vanno castati.
+
+Il resto e' portabile: la window function degli incidenti gira su MySQL 8 e
+Postgres, e il percentile e' ordinamento piu' offset.
 
 ## In valutazione
 
@@ -39,12 +58,11 @@ registrerebbe una colonna di righe uguali. Il caso che di solito spinge al
 multi-utente — dare accesso a un cliente senza dargli tutto — e' gia' coperto
 dal link firmato per servizio. Il trigger e' il secondo operatore.
 
-### Report SLA oltre il mese, e post-mortem
+### Annotazioni post-mortem
 
-La timeline degli incidenti c'e'. Restano fuori due cose: lo storico oltre i
-30 giorni di retention, che vuole il rollup di *Scala e retention*, e le
-annotazioni post-mortem, che vogliono una tabella perche' una nota va appesa a
-un incidente con un'identita' che resta.
+La timeline degli incidenti c'e' e lo storico arriva all'anno. Resta fuori
+l'annotazione: vuole una tabella, perche' una nota va appesa a un incidente
+con un'identita' che resta.
 
 ### Protocolli che restano fuori
 
@@ -88,10 +106,13 @@ Se cade il router, Zabbix manda un alert; questo ne manda uno per target. Con
 4 monitor non si nota, con 40 diventa il motivo per cui si smette di guardare
 gli alert.
 
-### Scala e retention
+### Scala
 
-Un worker, drain seriale, SQLite, retention di 30 giorni senza rollup. Il
-tetto non e' "quanti target ho" ma "quanti ne cadono insieme per il loro
-timeout": con i numeri attuali (4 monitor, 152 ms di media) non e' vicino.
-La leva, quando servira', e' un secondo `queue:work` schedulato con un
-`--name` diverso — non una ristrutturazione.
+Un worker, drain seriale. Il tetto non e' "quanti target ho" ma "quanti ne
+cadono insieme per il loro timeout": con i numeri attuali non e' vicino. La
+leva, quando servira', e' un secondo `queue:work` schedulato con un `--name`
+diverso — non una ristrutturazione.
+
+La retention non e' piu' un problema: un anno di righe grezze costa ~37 MB per
+target, e il rollup esisteva per risparmiare spazio che non manca. Torna in
+gioco solo se i target si moltiplicano per dieci.

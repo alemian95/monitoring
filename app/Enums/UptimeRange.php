@@ -10,6 +10,8 @@ enum UptimeRange: string
     case Day = 'day';
     case Week = 'week';
     case Month = 'month';
+    case Quarter = 'quarter';
+    case Year = 'year';
 
     public function label(): string
     {
@@ -18,6 +20,8 @@ enum UptimeRange: string
             self::Day => 'Ultime 24 ore',
             self::Week => 'Ultimi 7 giorni',
             self::Month => 'Ultimi 30 giorni',
+            self::Quarter => 'Ultimi 3 mesi',
+            self::Year => 'Ultimo anno',
         };
     }
 
@@ -32,6 +36,11 @@ enum UptimeRange: string
             self::Day => now()->subHours(23)->startOfHour(),
             self::Week => now()->subDays(6)->startOfDay(),
             self::Month => now()->subDays(29)->startOfDay(),
+            self::Quarter => now()->subDays(89)->startOfDay(),
+            // Mesi solari e non 365 giorni: un bucket mensile che comincia a
+            // meta' settembre non e' settembre, ed e' quello che l'etichetta
+            // direbbe.
+            self::Year => now()->subMonths(11)->startOfMonth(),
         };
     }
 
@@ -45,7 +54,8 @@ enum UptimeRange: string
         return match ($this) {
             self::Hour => [1, 'minute'],
             self::Day => [1, 'hour'],
-            self::Week, self::Month => [1, 'day'],
+            self::Week, self::Month, self::Quarter => [1, 'day'],
+            self::Year => [1, 'month'],
         };
     }
 
@@ -60,7 +70,8 @@ enum UptimeRange: string
         return match ($this) {
             self::Hour => '%Y-%m-%d %H:%M',
             self::Day => '%Y-%m-%d %H',
-            self::Week, self::Month => '%Y-%m-%d',
+            self::Week, self::Month, self::Quarter => '%Y-%m-%d',
+            self::Year => '%Y-%m',
         };
     }
 
@@ -73,7 +84,8 @@ enum UptimeRange: string
         return match ($this) {
             self::Hour => 'Y-m-d H:i',
             self::Day => 'Y-m-d H',
-            self::Week, self::Month => 'Y-m-d',
+            self::Week, self::Month, self::Quarter => 'Y-m-d',
+            self::Year => 'Y-m',
         };
     }
 
@@ -86,7 +98,10 @@ enum UptimeRange: string
             self::Hour => 'H:i',
             self::Day => 'H:00',
             self::Week => 'D d/m',
-            self::Month => 'd/m',
+            self::Month, self::Quarter => 'd/m',
+            // Numerico e non 'M Y': il nome del mese seguirebbe il locale
+            // dell'applicazione, che e' inglese.
+            self::Year => 'm/Y',
         };
     }
 
