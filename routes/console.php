@@ -20,6 +20,10 @@ Schedule::call(function (): void {
 // e il comando resta lanciabile a mano quando serve.
 Schedule::command('monitor:certificates')->daily();
 
+// La baseline guarda l'ultima ora contro la settimana precedente: piu' spesso
+// di cosi' confronterebbe la finestra con se stessa.
+Schedule::command('monitor:latency')->hourly();
+
 Schedule::command('queue:prune-failed --hours=168')->daily();
 
 // Retention dello storico dei check: 30 giorni. A intervallo di un minuto sono

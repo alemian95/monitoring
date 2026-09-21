@@ -13,7 +13,8 @@ Discord quando uno e' giu', con recovery quando torna su:
 Di ogni check restano status, tempo di risposta e motivo del fallimento. Dal
 primo errore all'alert passano ~35 secondi, il tempo di quattro tentativi.
 Finche' un target resta giu' l'alert si ripete ogni ora. Un comando giornaliero
-avvisa quattordici giorni prima che scada un certificato TLS. Gestione dei
+avvisa quattordici giorni prima che scada un certificato TLS, e uno orario
+quando un target rallenta rispetto alla sua normalita'. Gestione dei
 target via Filament (`/admin`), pagina di stato per singolo servizio.
 
 ## Push monitor
@@ -35,6 +36,22 @@ diventa il motivo del fallimento nell'alert.
 Il segreto e' il token nell'URL, non una firma: finisce nella crontab di
 qualcun altro, e se trapela va revocato da solo — l'azione *Rigenera URL di
 ping* lo sostituisce e spegne il vecchio.
+
+## Rallentamenti
+
+`max_response_time_ms` e' una soglia scelta a mano: stretta fa rumore, larga
+non scatta mai. Accanto a quella, `monitor:latency` ogni ora confronta il p95
+dell'ultima ora con il p95 della settimana precedente, e avvisa se e'
+almeno triplicato **e** cresciuto di almeno 250 ms — il solo moltiplicatore,
+su un target da 30 ms, segnalerebbe differenze che non nota nessuno.
+
+La soglia se la scrive il target da solo, quindi non c'e' niente da
+configurare. Non tocca `is_up`: un target lento non e' un target giu', e
+contarlo come tale falserebbe l'uptime. Il promemoria si ripete ogni sei ore
+finche' dura.
+
+Serve storico: dieci check nell'ultima ora e cento nella settimana. Un target
+controllato di rado non li raggiunge e resta con la sola soglia fissa.
 
 ## Pagina di stato
 

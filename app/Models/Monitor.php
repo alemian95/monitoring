@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
@@ -107,6 +108,37 @@ class Monitor extends Model
             ->avg('is_up');
 
         return $average === null ? null : round((float) $average * 100, 2);
+    }
+
+    /**
+     * Il percentile dei tempi di risposta in una finestra, in millisecondi, o
+     * `null` se i campioni non bastano a dirne qualcosa.
+     *
+     * Percentile e non media: la media la abbassa la maggioranza dei check
+     * veloci, e un target che rallenta lo fa prima sulla coda. SQLite non ha
+     * una funzione di percentile, quindi si ordina e si prende la riga
+     * all'indice giusto — due query, su una finestra gia' ristretta.
+     */
+    public function responseTimePercentile(
+        float $percentile,
+        Carbon $since,
+        ?Carbon $until = null,
+        int $minimumSamples = 1,
+    ): ?int {
+        $query = $this->checks()
+            ->whereNotNull('response_time_ms')
+            ->where('checked_at', '>=', $since)
+            ->when($until, fn (Builder $query) => $query->where('checked_at', '<', $until));
+
+        $total = (clone $query)->count();
+
+        if ($total === 0 || $total < $minimumSamples) {
+            return null;
+        }
+
+        $offset = min((int) floor($total * $percentile), $total - 1);
+
+        return $query->orderBy('response_time_ms')->offset($offset)->value('response_time_ms');
     }
 
     /**

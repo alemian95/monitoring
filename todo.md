@@ -5,16 +5,20 @@ Better Stack, Zabbix e Checkly. Non tutto va colmato: dove i grandi vincono
 per struttura e non per righe di codice, replicarli male e' peggio che non
 averli.
 
-Fatti nel frattempo: il **push monitor** (una rotta con token che i job
-esterni chiamano, e un alert se smettono o se dichiarano `/fail`), il **DNS**
-(il record esiste e contiene ancora il valore atteso) e l'**HTTP oltre il
-GET** (metodo, header cifrati a riposo, corpo).
+## Fatto nel frattempo
 
-Fatta nel frattempo: la pagina di stato. Una pagina per servizio, con la
-visibilita' decisa sul singolo (pannello / in chiaro / link firmato a
-scadenza); fuori dal pannello non esiste un elenco, cosi' il link che mandi a
-un cliente mostra il suo servizio e non rivela gli altri. Il riepilogo di tutti
-i servizi e' su `/status`, dietro il login.
+- **Baseline sui tempi di risposta** — `monitor:latency` confronta ogni ora il
+  p95 dell'ultima ora con quello della settimana precedente. Segnale accanto
+  alla soglia fissa, non un suo sostituto: non tocca `is_up`.
+- **Push monitor** — una rotta con token che i job esterni chiamano, e un
+  alert se smettono o se dichiarano `/fail`.
+- **DNS** — il record esiste e contiene ancora il valore atteso.
+- **HTTP oltre il GET** — metodo, header cifrati a riposo, corpo.
+- **Pagina di stato** — una pagina per servizio, con la visibilita' decisa sul
+  singolo (pannello / in chiaro / link firmato a scadenza). Fuori dal pannello
+  non esiste un elenco, cosi' il link che mandi a un cliente mostra il suo
+  servizio e non rivela gli altri; il riepilogo di tutti i servizi e' su
+  `/status`, dietro il login.
 
 ## Da fare
 
@@ -32,17 +36,6 @@ Tre cose separate che oggi mancano tutte e tre:
 
 Da fare a pezzi, non in blocco: l'API ha senso quando c'e' qualcosa che la
 chiama, le policy quando c'e' un secondo utente.
-
-### Baseline sui tempi di risposta
-
-Oggi `max_response_time_ms` e' un numero fisso che scegli a mano, per target.
-Se lo metti stretto genera rumore, se lo metti largo non scatta mai.
-
-Un target sano ha un profilo: la sua normalita' e' nei dati che stiamo gia'
-salvando. Allertare su "il p95 di oggi e' tre volte quello dell'ultima
-settimana" e' la stessa query del grafico dei tempi di risposta, con un
-percentile al posto della media. Da capire se conviene come *sostituto* della
-soglia o come segnale in piu' accanto ad essa.
 
 ## In valutazione
 
