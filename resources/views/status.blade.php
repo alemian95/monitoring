@@ -9,7 +9,7 @@
     {{-- L'aggiornamento senza una riga di JavaScript, in un progetto che non ha
          una pipeline frontend. --}}
     <meta http-equiv="refresh" content="60">
-    <title>Stato dei servizi — {{ $title }}</title>
+    <title>{{ $title }}</title>
     <style>
         :root {
             --bg: #fafafa;
@@ -80,7 +80,7 @@
 
         .service h2 { font-size: 1rem; margin: 0; }
 
-        .state { font-size: .8rem; font-weight: 600; }
+        .state { margin-left: auto; font-size: .8rem; font-weight: 600; }
         .state.ok { color: var(--ok); }
         .state.down { color: var(--down); }
         .state.none { color: var(--muted); }
@@ -116,18 +116,20 @@
 </head>
 <body>
 <main>
-    <h1>Stato dei servizi</h1>
+    <h1>{{ $title }}</h1>
 
     @if (filled($services))
-        <p class="banner {{ $operational ? 'ok' : 'down' }}">
-            {{ $operational ? 'Tutti i sistemi operativi' : 'Disservizio in corso' }}
-        </p>
+        <p class="banner {{ $banner['class'] }}">{{ $banner['text'] }}</p>
     @endif
 
     @forelse ($services as $service)
         <article class="service">
             <header>
-                <h2>{{ $service['name'] }}</h2>
+                {{-- Sulla pagina del singolo servizio il nome e' gia' il
+                     titolo: ripeterlo qui sarebbe la stessa parola due volte. --}}
+                @if (count($services) > 1)
+                    <h2>{{ $service['name'] }}</h2>
+                @endif
                 @if ($service['isUp'] === null)
                     <span class="state none">Mai controllato</span>
                 @else
@@ -152,7 +154,7 @@
             </div>
         </article>
     @empty
-        <p class="empty">Nessun servizio pubblicato.</p>
+        <p class="empty">Nessun servizio configurato.</p>
     @endforelse
 
     {{-- Il fuso e' quello dell'app, non quello di chi guarda: senza etichetta

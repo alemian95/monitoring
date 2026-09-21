@@ -5,8 +5,11 @@ Better Stack, Zabbix e Checkly. Non tutto va colmato: dove i grandi vincono
 per struttura e non per righe di codice, replicarli male e' peggio che non
 averli.
 
-Fatta nel frattempo: la status page pubblica, con visibilita' per-servizio
-(pannello / pubblica / link firmato a scadenza).
+Fatta nel frattempo: la pagina di stato. Una pagina per servizio, con la
+visibilita' decisa sul singolo (pannello / in chiaro / link firmato a
+scadenza); fuori dal pannello non esiste un elenco, cosi' il link che mandi a
+un cliente mostra il suo servizio e non rivela gli altri. Il riepilogo di tutti
+i servizi e' su `/status`, dietro il login.
 
 ## Da fare
 

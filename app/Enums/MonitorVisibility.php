@@ -5,7 +5,10 @@ namespace App\Enums;
 use Illuminate\Http\Request;
 
 /**
- * Chi puo' vedere lo stato di un servizio fuori dal pannello.
+ * Chi puo' vedere lo stato di un servizio da fuori.
+ *
+ * Nessuna di queste modalita' mette il servizio in un elenco pubblico: fuori
+ * dal pannello si raggiunge una pagina alla volta, con il suo indirizzo.
  *
  * La regola d'accesso vive qui e non nella rotta: e' una proprieta' del
  * servizio, e la pagina, il pannello e i test devono leggerla dallo stesso
@@ -16,10 +19,10 @@ enum MonitorVisibility: string
     /** Solo dal pannello: la pagina pubblica non ammette che esista. */
     case Private = 'private';
 
-    /** In chiaro, ed elencato nell'indice. */
+    /** Raggiungibile in chiaro da chi ne conosce l'indirizzo. */
     case Public = 'public';
 
-    /** Raggiungibile solo con un link firmato, e mai elencato. */
+    /** Raggiungibile solo con un link firmato, che puo' scadere. */
     case Signed = 'signed';
 
     public function label(): string
@@ -29,14 +32,6 @@ enum MonitorVisibility: string
             self::Public => 'Pubblica',
             self::Signed => 'Solo con link firmato',
         };
-    }
-
-    /**
-     * Se il servizio compare nell'indice di `/status`.
-     */
-    public function isListed(): bool
-    {
-        return $this === self::Public;
     }
 
     /**

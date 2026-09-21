@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\MonitorVisibility;
 use App\Enums\UptimeLevel;
 use App\Enums\UptimeRange;
 use App\Models\Monitor;
@@ -13,8 +12,12 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * La pagina di stato pubblica: l'indice dei servizi pubblicati e la pagina del
- * singolo servizio, che e' anche quella che si raggiunge con un link firmato.
+ * Il riepilogo interno di tutti i servizi e la pagina del singolo servizio,
+ * che e' l'unica cosa che esce di qui: quella in chiaro se il servizio e'
+ * pubblico, quella dietro firma se ha un link firmato.
+ *
+ * Fuori non esiste un elenco. Chi non e' autenticato puo' vedere il servizio
+ * di cui ha l'indirizzo, non sapere quali altri ce ne sono.
  */
 class StatusPageController extends Controller
 {
@@ -27,19 +30,21 @@ class StatusPageController extends Controller
 
     private const RANGE = UptimeRange::Month;
 
+    /**
+     * Tutti i servizi, visibilita' compresa: la rotta e' dietro `auth`.
+     */
     public function index(): View
     {
-        $monitors = Monitor::query()
-            ->where('visibility', MonitorVisibility::Public)
-            ->orderBy('name')
-            ->get();
-
-        return $this->page(config('app.name'), $monitors);
+        return $this->page('Stato dei servizi', Monitor::query()->orderBy('name')->get());
     }
 
     public function show(Request $request, Monitor $monitor): View
     {
-        $denial = $monitor->visibility->denialStatus($request);
+        // Chi e' autenticato ha gia' accesso a tutto dal pannello: la
+        // visibilita' regola chi arriva da fuori, non chi e' dentro.
+        $denial = $request->user() === null
+            ? $monitor->visibility->denialStatus($request)
+            : null;
 
         if ($denial !== null) {
             abort($denial, $denial === 403 ? 'Questo link non è più valido.' : '');
@@ -54,12 +59,22 @@ class StatusPageController extends Controller
     private function page(string $title, Collection $monitors): View
     {
         $services = $this->summarise($monitors);
+        $operational = collect($services)->every(fn (array $service): bool => $service['isUp'] !== false);
+        $single = count($services) === 1;
 
         return view('status', [
             'title' => $title,
             'services' => $services,
             'range' => self::RANGE,
-            'operational' => collect($services)->every(fn (array $service): bool => $service['isUp'] !== false),
+            'banner' => [
+                'class' => $operational ? 'ok' : 'down',
+                'text' => match (true) {
+                    $operational && $single => 'Servizio operativo',
+                    $operational => 'Tutti i sistemi operativi',
+                    $single => 'Servizio non raggiungibile',
+                    default => 'Disservizio in corso',
+                },
+            ],
         ]);
     }
 

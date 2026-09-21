@@ -2,29 +2,38 @@
 
 use App\Enums\MonitorVisibility;
 use App\Models\Monitor;
+use App\Models\User;
 
 it('reindirizza la radice alla pagina di stato', function () {
     $this->get('/')->assertRedirect('/status');
 });
 
-it('elenca solo i servizi pubblici', function () {
+it('non mostra il riepilogo a chi non e autenticato', function () {
+    Monitor::factory()->create(['visibility' => MonitorVisibility::Public]);
+
+    // Fuori non deve esistere un elenco: chi arriva da fuori puo' vedere il
+    // servizio di cui ha l'indirizzo, non sapere quali altri ce ne sono.
+    $this->get(route('status.index'))->assertRedirect(route('filament.admin.auth.login'));
+});
+
+it('mostra tutti i servizi nel riepilogo a chi e autenticato', function () {
     Monitor::factory()->create(['name' => 'Sito vetrina', 'visibility' => MonitorVisibility::Public]);
     Monitor::factory()->create(['name' => 'Gestionale interno', 'visibility' => MonitorVisibility::Private]);
     Monitor::factory()->create(['name' => 'Servizio del cliente', 'visibility' => MonitorVisibility::Signed]);
 
-    $this->get(route('status.index'))
+    $this->actingAs(User::factory()->create())
+        ->get(route('status.index'))
         ->assertOk()
         ->assertSee('Sito vetrina')
-        ->assertDontSee('Gestionale interno')
-        ->assertDontSee('Servizio del cliente');
+        ->assertSee('Gestionale interno')
+        ->assertSee('Servizio del cliente');
 });
 
-it('regge un indice senza nemmeno un servizio pubblicato', function () {
-    Monitor::factory()->create(['visibility' => MonitorVisibility::Private]);
-
-    $this->get(route('status.index'))
+it('regge un riepilogo senza nemmeno un servizio', function () {
+    $this->actingAs(User::factory()->create())
+        ->get(route('status.index'))
         ->assertOk()
-        ->assertSee('Nessun servizio pubblicato');
+        ->assertSee('Nessun servizio configurato');
 });
 
 it('non ammette che un servizio privato esista', function () {
@@ -33,6 +42,18 @@ it('non ammette che un servizio privato esista', function () {
     // 404 e non 403: un 403 confermerebbe che a quell'id c'e' qualcosa.
     $this->get(route('status.monitor', $monitor))->assertNotFound();
     $this->get($monitor->statusUrl())->assertNotFound();
+});
+
+it('apre a chi e autenticato anche la pagina di un servizio privato', function () {
+    $monitor = Monitor::factory()->create([
+        'name' => 'Gestionale interno',
+        'visibility' => MonitorVisibility::Private,
+    ]);
+
+    $this->actingAs(User::factory()->create())
+        ->get(route('status.monitor', $monitor))
+        ->assertOk()
+        ->assertSee('Gestionale interno');
 });
 
 it('apre in chiaro la pagina di un servizio pubblico', function () {

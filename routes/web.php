@@ -5,9 +5,12 @@ use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/status');
 
-Route::get('/status', [StatusPageController::class, 'index'])->name('status.index');
+// Il riepilogo di tutti i servizi e' roba interna: fuori dal pannello si vede
+// un servizio alla volta, mai l'elenco di quello che c'e'.
+Route::get('/status', [StatusPageController::class, 'index'])
+    ->middleware('auth')
+    ->name('status.index');
 
-// La stessa pagina serve il servizio pubblico e quello a link firmato: e'
-// `MonitorVisibility` a decidere chi passa, perche' e' una proprieta' del
+// Chi passa lo decide `MonitorVisibility`, perche' e' una proprieta' del
 // servizio e non della rotta.
 Route::get('/status/{monitor}', [StatusPageController::class, 'show'])->name('status.monitor');

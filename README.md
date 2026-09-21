@@ -7,18 +7,23 @@ su. Di ogni check restano status, tempo di risposta e motivo del fallimento.
 Dal primo errore all'alert passano ~35 secondi, il tempo di quattro tentativi.
 Finché un target resta giù l'alert si ripete ogni ora. Un comando giornaliero
 avvisa quattordici giorni prima che scada un certificato TLS. Gestione dei
-target via Filament (`/admin`), pagina di stato pubblica su `/status`.
+target via Filament (`/admin`), pagina di stato per singolo servizio.
 
 ## Pagina di stato
 
-Ogni servizio decide chi lo vede, con il campo *Pagina di stato* nel pannello:
+Fuori dal pannello si vede **un servizio alla volta**, su `/status/{id}`: non
+esiste un elenco pubblico, quindi il link che mandi a un cliente mostra il suo
+servizio e niente altro. Il riepilogo di tutti i servizi sta su `/status` ed e'
+dietro il login del pannello.
+
+Chi puo' vedere un servizio da fuori lo decide il campo *Pagina di stato*:
 
 - **Solo dal pannello** (default): `/status/{id}` risponde 404. Un servizio che
   non hai pubblicato non conferma nemmeno di esistere.
-- **Pubblica**: compare nell'indice `/status` e si apre in chiaro.
-- **Solo con link firmato**: non compare da nessuna parte, si apre solo con il
-  link generato dall'azione *Link firmato* nella tabella dei monitor, che
-  chiede la scadenza (fino a «nessuna»).
+- **Pubblica**: si apre in chiaro a chi ne conosce l'indirizzo.
+- **Solo con link firmato**: si apre solo con il link generato dall'azione
+  *Link firmato* nella tabella dei monitor, che chiede la scadenza (fino a
+  «nessuna»).
 
 **La firma e' calcolata sull'URL assoluto: in produzione `APP_URL` deve essere
 quello vero, o i link firmati non valideranno.**
