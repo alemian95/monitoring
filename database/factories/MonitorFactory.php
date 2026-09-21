@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Enums\MonitorType;
+use App\Enums\MonitorVisibility;
 use App\Models\Monitor;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -27,6 +28,7 @@ class MonitorFactory extends Factory
             'max_response_time_ms' => null,
             'interval_minutes' => 1,
             'is_active' => true,
+            'visibility' => MonitorVisibility::Private,
             'is_up' => null,
             'next_check_at' => null,
         ];

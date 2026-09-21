@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\UptimeLevel;
 use App\Models\Monitor;
 use App\Models\MonitorCheck;
 use Filament\Widgets\StatsOverviewWidget;
@@ -53,6 +54,6 @@ class UptimeOverview extends StatsOverviewWidget
         return Stat::make('Uptime 24h', $percentage === null ? '—' : "{$percentage}%")
             ->description($checks->isEmpty() ? 'nessun check registrato' : "{$checks->count()} check")
             ->chart($hourly->count() > 1 ? $hourly->all() : [0, 0])
-            ->color($percentage === null ? 'gray' : ($percentage >= 99 ? 'success' : ($percentage >= 95 ? 'warning' : 'danger')));
+            ->color(UptimeLevel::for($percentage)->color());
     }
 }

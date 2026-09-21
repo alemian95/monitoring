@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Monitors\Schemas;
 
 use App\Enums\MonitorType;
+use App\Enums\MonitorVisibility;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\TextInput;
@@ -62,6 +63,12 @@ class MonitorForm
                     ->minValue(1),
                 Toggle::make('is_active')
                     ->default(true),
+                Select::make('visibility')
+                    ->label('Pagina di stato')
+                    ->helperText('Chi puo vedere questo servizio fuori dal pannello.')
+                    ->options(MonitorVisibility::options())
+                    ->default(MonitorVisibility::Private)
+                    ->required(),
             ]);
     }
 

@@ -5,17 +5,10 @@ Better Stack, Zabbix e Checkly. Non tutto va colmato: dove i grandi vincono
 per struttura e non per righe di codice, replicarli male e' peggio che non
 averli.
 
+Fatta nel frattempo: la status page pubblica, con visibilita' per-servizio
+(pannello / pubblica / link firmato a scadenza).
+
 ## Da fare
-
-### Status page pubblica
-
-Oggi `routes/web.php` serve ancora la welcome di Laravel. E' la funzione con
-cui Kuma, Better Stack e StatusCake si presentano: e' quello che mostri al
-cliente invece di rispondere alle mail.
-
-I dati ci sono gia' tutti — `Monitor::uptimeSeries()` e `responseTimeSeries()`
-sono le stesse serie che alimentano i grafici del pannello. Manca solo la
-vista: una rotta Blade, nessun layer nuovo.
 
 ### Piu' protocolli
 

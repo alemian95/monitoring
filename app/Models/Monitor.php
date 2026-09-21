@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\MonitorType;
+use App\Enums\MonitorVisibility;
 use App\Enums\UptimeRange;
 use Database\Factories\MonitorFactory;
 use Illuminate\Database\Eloquent\Attributes\Scope;
@@ -11,6 +12,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\URL;
 
 class Monitor extends Model
 {
@@ -44,6 +46,40 @@ class Monitor extends Model
             'failure_reason' => $failureReason,
             'checked_at' => now(),
         ]);
+    }
+
+    /**
+     * Il link alla pagina di stato di questo servizio, firmato.
+     *
+     * La firma copre l'URL intero, quindi il link di un servizio non ne apre un
+     * altro. Senza giorni il link non scade: e' una scelta, non una
+     * dimenticanza, e va fatta da chi lo genera.
+     *
+     * Attenzione: la firma e' calcolata sull'URL assoluto, quindi in produzione
+     * `APP_URL` deve essere quello vero o i link non valideranno.
+     */
+    public function statusUrl(?int $expiresInDays = null): string
+    {
+        return $expiresInDays === null
+            ? URL::signedRoute('status.monitor', $this)
+            : URL::temporarySignedRoute('status.monitor', now()->addDays($expiresInDays), $this);
+    }
+
+    /**
+     * Percentuale di check riusciti sull'intera finestra, o `null` se in quella
+     * finestra non c'e' nemmeno un check.
+     *
+     * Non e' la media di `uptimeSeries()`: i bucket hanno un numero di check
+     * diverso l'uno dall'altro, e mediare percentuali gia' mediate darebbe piu'
+     * peso a un'ora con due check che a una con sessanta.
+     */
+    public function uptimePercentage(UptimeRange $range = UptimeRange::Month): ?float
+    {
+        $average = $this->checks()
+            ->where('checked_at', '>=', $range->since())
+            ->avg('is_up');
+
+        return $average === null ? null : round((float) $average * 100, 2);
     }
 
     /**
@@ -143,6 +179,7 @@ class Monitor extends Model
     {
         return [
             'type' => MonitorType::class,
+            'visibility' => MonitorVisibility::class,
             'port' => 'integer',
             'expected_statuses' => 'array',
             'timeout_seconds' => 'integer',
