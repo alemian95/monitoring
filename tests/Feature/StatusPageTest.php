@@ -120,3 +120,48 @@ it('disegna una barra per giorno della finestra e la percentuale di uptime', fun
     expect(substr_count($response->getContent(), 'class="bar '))->toBe(30);
     $response->assertSee('75% di uptime');
 });
+
+it('elenca i disservizi con durata, senza rivelarne il motivo', function () {
+    $monitor = Monitor::factory()->create(['visibility' => MonitorVisibility::Public]);
+
+    foreach ([true, false, false, false, true] as $index => $isUp) {
+        $monitor->checks()->create([
+            'is_up' => $isUp,
+            'failure_reason' => $isUp ? null : 'TCP 10.0.0.5:5432 — Connection refused',
+            'checked_at' => now()->subMinutes(10 - $index),
+        ]);
+    }
+
+    $this->get(route('status.monitor', $monitor))
+        ->assertOk()
+        ->assertSee('3 minuti di disservizio')
+        // Un estraneo puo' sapere quanto e' durato, non com'e' fatta la rete.
+        ->assertDontSee('10.0.0.5');
+});
+
+it('dice quando un disservizio e ancora in corso', function () {
+    $monitor = Monitor::factory()->create(['visibility' => MonitorVisibility::Public]);
+
+    $monitor->checks()->create(['is_up' => true, 'checked_at' => now()->subMinutes(5)]);
+    $monitor->checks()->create(['is_up' => false, 'checked_at' => now()->subMinutes(4)]);
+
+    $this->get(route('status.monitor', $monitor))
+        ->assertOk()
+        ->assertSee('disservizio in corso da 4 minuti');
+});
+
+it('conta i disservizi oltre i primi cinque invece di elencarli tutti', function () {
+    $monitor = Monitor::factory()->create(['visibility' => MonitorVisibility::Public]);
+
+    // Sette cadute alternate a sette riprese: cinque in elenco, due contate.
+    foreach (range(0, 13) as $index) {
+        $monitor->checks()->create([
+            'is_up' => $index % 2 === 1,
+            'checked_at' => now()->subMinutes(20 - $index),
+        ]);
+    }
+
+    $this->get(route('status.monitor', $monitor))
+        ->assertOk()
+        ->assertSee('e altri 2 nel periodo');
+});

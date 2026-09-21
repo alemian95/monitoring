@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\UptimeLevel;
 use App\Enums\UptimeRange;
 use App\Models\Monitor;
+use App\Support\Incident;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -29,6 +30,9 @@ class StatusPageController extends Controller
     private const CACHE_SECONDS = 60;
 
     private const RANGE = UptimeRange::Month;
+
+    /** Quanti disservizi elencare prima di contare e basta. */
+    private const MAX_INCIDENTS = 5;
 
     /**
      * Tutti i servizi, visibilita' compresa: la rotta e' dietro `auth`.
@@ -87,7 +91,7 @@ class StatusPageController extends Controller
      * servizio la invalida da solo senza bisogno di ricordarselo.
      *
      * @param  Collection<int, Monitor>  $monitors
-     * @return list<array{name: string, isUp: bool|null, uptime: float|null, level: string, days: list<array{label: string, class: string, title: string}>}>
+     * @return list<array{name: string, isUp: bool|null, uptime: float|null, level: string, days: list<array{label: string, class: string, title: string}>, incidents: array{list: list<array{when: string, duration: string, ongoing: bool}>, more: int}}>
      */
     private function summarise(Collection $monitors): array
     {
@@ -100,8 +104,35 @@ class StatusPageController extends Controller
                 'uptime' => $uptime = $monitor->uptimePercentage(self::RANGE),
                 'level' => UptimeLevel::for($uptime)->cssClass(),
                 'days' => $this->days($monitor),
+                'incidents' => $this->incidents($monitor),
             ])->all(),
         );
+    }
+
+    /**
+     * I disservizi della finestra, i piu' recenti per primi.
+     *
+     * Senza il motivo del fallimento: «TCP 10.0.0.5:5432 — Connection refused»
+     * racconta a un estraneo com'e' fatta la rete dentro. Quanto e' durato lo
+     * puo' sapere, perche' lo ha subito.
+     *
+     * @return array{list: list<array{when: string, duration: string, ongoing: bool}>, more: int}
+     */
+    private function incidents(Monitor $monitor): array
+    {
+        $incidents = $monitor->incidents(self::RANGE);
+
+        return [
+            'list' => $incidents
+                ->take(self::MAX_INCIDENTS)
+                ->map(fn (Incident $incident): array => [
+                    'when' => $incident->startedAt->format('d/m H:i'),
+                    'duration' => $incident->duration(),
+                    'ongoing' => $incident->isOngoing(),
+                ])
+                ->all(),
+            'more' => max($incidents->count() - self::MAX_INCIDENTS, 0),
+        ];
     }
 
     /**

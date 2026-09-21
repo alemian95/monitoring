@@ -37,6 +37,24 @@ Il segreto e' il token nell'URL, non una firma: finisce nella crontab di
 qualcun altro, e se trapela va revocato da solo — l'azione *Rigenera URL di
 ping* lo sostituisce e spegne il vecchio.
 
+## Disservizi
+
+Lo storico e' una colonna di booleani; letto come eventi diventa «giu' 47
+minuti dalle 03:12, per timeout». Gli incidenti non hanno una tabella: sono
+serie consecutive di check falliti, ricostruite con una window function che
+restituisce solo i cambi di stato — su un mese a un check al minuto sono una
+manciata di righe invece di quarantamila.
+
+Si vedono in due posti. Nel pannello, sotto i grafici del monitor, con il
+motivo del fallimento. Sulla pagina di stato, sotto le barre, **senza** il
+motivo: «TCP 10.0.0.5:5432 — Connection refused» racconta a un estraneo com'e'
+fatta la rete dentro, mentre quanto e' durato lo puo' sapere, perche' lo ha
+subito.
+
+Il tetto e' la retention: 30 giorni, quindi un SLA mensile si legge e uno
+annuale no. Annotare un post-mortem richiederebbe invece una tabella, perche'
+una nota va appesa a qualcosa che resta.
+
 ## Rallentamenti
 
 `max_response_time_ms` e' una soglia scelta a mano: stretta fa rumore, larga

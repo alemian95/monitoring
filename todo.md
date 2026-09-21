@@ -7,6 +7,9 @@ averli.
 
 ## Fatto nel frattempo
 
+- **Timeline degli incidenti** — lo storico letto come eventi invece che come
+  righe, nel pannello (con il motivo) e sulla pagina di stato (senza). Nessuna
+  tabella: sono serie consecutive di check falliti.
 - **Baseline sui tempi di risposta** — `monitor:latency` confronta ogni ora il
   p95 dell'ultima ora con quello della settimana precedente. Segnale accanto
   alla soglia fissa, non un suo sostituto: non tocca `is_up`.
@@ -20,24 +23,28 @@ averli.
   servizio e non rivela gli altri; il riepilogo di tutti i servizi e' su
   `/status`, dietro il login.
 
-## Da fare
-
-### API, multi-utente, report
-
-Tre cose separate che oggi mancano tutte e tre:
-
-- nessuna API: i monitor si creano solo dalla UI Filament, quindi niente
-  gestione da script o da un altro servizio;
-- un utente solo e nessuna policy: non c'e' modo di dare accesso a qualcuno
-  senza dargli tutto;
-- nessun report SLA mensile, nessuna timeline degli incidenti, nessuna
-  annotazione post-mortem. Lo storico c'e' (`monitor_checks`), manca la
-  lettura che lo racconta come incidenti invece che come righe.
-
-Da fare a pezzi, non in blocco: l'API ha senso quando c'e' qualcosa che la
-chiama, le policy quando c'e' un secondo utente.
-
 ## In valutazione
+
+### API
+
+Nessuno la chiama, e un'API si progetta attorno al suo consumatore: senza,
+si espone il CRUD dei monitor e si scopre dopo che serviva un'altra forma. Il
+trigger e' preciso — quando un deploy script dovra' creare o silenziare un
+monitor da solo. Allora sono tre rotte, non un layer.
+
+### Multi-utente, policy, audit
+
+Un utente solo: le policy proteggerebbero te da te stesso e l'audit
+registrerebbe una colonna di righe uguali. Il caso che di solito spinge al
+multi-utente — dare accesso a un cliente senza dargli tutto — e' gia' coperto
+dal link firmato per servizio. Il trigger e' il secondo operatore.
+
+### Report SLA oltre il mese, e post-mortem
+
+La timeline degli incidenti c'e'. Restano fuori due cose: lo storico oltre i
+30 giorni di retention, che vuole il rollup di *Scala e retention*, e le
+annotazioni post-mortem, che vogliono una tabella perche' una nota va appesa a
+un incidente con un'identita' che resta.
 
 ### Protocolli che restano fuori
 

@@ -4,6 +4,7 @@ use App\Enums\UptimeRange;
 use App\Exceptions\MonitorCheckFailed;
 use App\Filament\Resources\Monitors\MonitorResource;
 use App\Filament\Resources\Monitors\Pages\EditMonitor;
+use App\Filament\Resources\Monitors\Widgets\MonitorIncidents;
 use App\Filament\Resources\Monitors\Widgets\MonitorResponseTimeChart;
 use App\Filament\Resources\Monitors\Widgets\MonitorUptimeChart;
 use App\Filament\Widgets\UptimeOverview;
@@ -357,4 +358,26 @@ it('lascia libero verso l alto l asse dei millisecondi, che non hanno un tetto',
     )->getOptions();
 
     expect($options['scales']['y'])->toBe(['beginAtZero' => true]);
+});
+
+it('elenca i disservizi nel pannello, motivo compreso', function () {
+    $monitor = Monitor::factory()->create();
+
+    $monitor->checks()->create(['is_up' => true, 'checked_at' => now()->subMinutes(10)]);
+    $monitor->checks()->create(['is_up' => false, 'failure_reason' => 'HTTP 503', 'checked_at' => now()->subMinutes(9)]);
+    $monitor->checks()->create(['is_up' => true, 'checked_at' => now()->subMinutes(7)]);
+
+    Livewire::test(MonitorIncidents::class, ['record' => $monitor])
+        ->assertSee('2 minuti')
+        // Dentro il pannello il motivo si mostra: non c'e' nessun estraneo.
+        ->assertSee('HTTP 503')
+        ->assertSuccessful();
+});
+
+it('dice esplicitamente quando non ci sono disservizi', function () {
+    $monitor = Monitor::factory()->create();
+    $monitor->checks()->create(['is_up' => true, 'checked_at' => now()->subMinute()]);
+
+    Livewire::test(MonitorIncidents::class, ['record' => $monitor])
+        ->assertSee('Nessun disservizio nel periodo');
 });

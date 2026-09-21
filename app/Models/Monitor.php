@@ -6,6 +6,7 @@ use App\Enums\DnsRecordType;
 use App\Enums\MonitorType;
 use App\Enums\MonitorVisibility;
 use App\Enums\UptimeRange;
+use App\Support\Incident;
 use Database\Factories\MonitorFactory;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
@@ -14,6 +15,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 
@@ -108,6 +110,65 @@ class Monitor extends Model
             ->avg('is_up');
 
         return $average === null ? null : round((float) $average * 100, 2);
+    }
+
+    /**
+     * I disservizi della finestra, dal piu' recente.
+     *
+     * Lo storico e' una colonna di booleani: qui diventa una serie di eventi,
+     * che e' come li racconta chi li legge — «giu' 47 minuti per timeout», non
+     * quarantasette righe.
+     *
+     * Torna solo le transizioni e non tutte le righe: su un mese a un check al
+     * minuto sarebbero oltre quarantamila, mentre i cambi di stato si contano
+     * sulle dita. `lag()` guarda la riga precedente; la prima della finestra
+     * non ne ha una, ed entra comunque perche' un incidente puo' essere gia'
+     * cominciato prima.
+     *
+     * ponytail: sintassi SQLite, come `UptimeRange::sqlFormat()`. Se un
+     * monitor viene messo in pausa mentre e' giu', l'incidente resta aperto
+     * fino alla ripresa: non abbiamo osservato nessuna guarigione, e inventarne
+     * una sarebbe peggio.
+     *
+     * @return Collection<int, Incident>
+     */
+    public function incidents(UptimeRange $range = UptimeRange::Month): Collection
+    {
+        $transitions = DB::query()
+            ->fromSub(
+                MonitorCheck::query()
+                    ->where('monitor_id', $this->id)
+                    ->where('checked_at', '>=', $range->since())
+                    ->selectRaw('checked_at, is_up, failure_reason, lag(is_up) over (order by checked_at, id) as previous_is_up')
+                    ->toBase(),
+                'transitions',
+            )
+            ->whereColumn('is_up', '!=', 'previous_is_up')
+            ->orWhereNull('previous_is_up')
+            ->orderBy('checked_at')
+            ->get();
+
+        $incidents = collect();
+        $open = null;
+
+        foreach ($transitions as $transition) {
+            if (! $transition->is_up && $open === null) {
+                $open = new Incident(
+                    Carbon::parse($transition->checked_at),
+                    null,
+                    $transition->failure_reason,
+                );
+            } elseif ($transition->is_up && $open !== null) {
+                $incidents->push(new Incident($open->startedAt, Carbon::parse($transition->checked_at), $open->reason));
+                $open = null;
+            }
+        }
+
+        if ($open !== null) {
+            $incidents->push($open);
+        }
+
+        return $incidents->reverse()->values();
     }
 
     /**

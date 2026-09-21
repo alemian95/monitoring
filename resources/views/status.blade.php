@@ -106,6 +106,30 @@
         .uptime.down { color: var(--down); }
         .uptime.none { color: var(--muted); }
 
+        .incidents {
+            list-style: none;
+            margin: .9rem 0 0;
+            padding: .9rem 0 0;
+            border-top: 1px solid var(--border);
+            font-size: .8rem;
+        }
+
+        .incidents li {
+            display: flex;
+            gap: .6rem;
+            padding: .15rem 0;
+            color: var(--muted);
+        }
+
+        .incidents .when {
+            flex: none;
+            width: 5.5rem;
+            font-variant-numeric: tabular-nums;
+            color: var(--text);
+        }
+
+        .incidents .ongoing { color: var(--down); font-weight: 600; }
+
         .empty, .updated {
             color: var(--muted);
             font-size: .8rem;
@@ -152,14 +176,34 @@
                 </span>
                 <span>oggi</span>
             </div>
+
+            @if (filled($service['incidents']['list']))
+                <ul class="incidents">
+                    @foreach ($service['incidents']['list'] as $incident)
+                        <li>
+                            <span class="when">{{ $incident['when'] }}</span>
+                            @if ($incident['ongoing'])
+                                <span class="ongoing">disservizio in corso da {{ $incident['duration'] }}</span>
+                            @else
+                                <span>{{ $incident['duration'] }} di disservizio</span>
+                            @endif
+                        </li>
+                    @endforeach
+
+                    @if ($service['incidents']['more'] > 0)
+                        <li><span class="when"></span><span>e altri {{ $service['incidents']['more'] }} nel periodo</span></li>
+                    @endif
+                </ul>
+            @endif
         </article>
     @empty
         <p class="empty">Nessun servizio configurato.</p>
     @endforelse
 
     {{-- Il fuso e' quello dell'app, non quello di chi guarda: senza etichetta
-         un orario su una pagina pubblica e' un orario sbagliato per qualcuno. --}}
-    <p class="updated">Aggiornato alle {{ now()->format('H:i T') }}</p>
+         un orario su una pagina pubblica e' un orario sbagliato per qualcuno.
+         Dichiararlo qui vale anche per gli orari dei disservizi. --}}
+    <p class="updated">Orari in {{ now()->format('T') }} · aggiornato alle {{ now()->format('H:i') }}</p>
 </main>
 </body>
 </html>

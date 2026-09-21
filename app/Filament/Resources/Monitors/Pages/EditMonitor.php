@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Monitors\Pages;
 
 use App\Filament\Resources\Monitors\MonitorResource;
+use App\Filament\Resources\Monitors\Widgets\MonitorIncidents;
 use App\Filament\Resources\Monitors\Widgets\MonitorResponseTimeChart;
 use App\Filament\Resources\Monitors\Widgets\MonitorUptimeChart;
 use Filament\Actions\DeleteAction;
@@ -27,6 +28,7 @@ class EditMonitor extends EditRecord
         return [
             MonitorUptimeChart::class,
             MonitorResponseTimeChart::class,
+            MonitorIncidents::class,
         ];
     }
 }
