@@ -157,5 +157,6 @@ it('propone come gruppo solo i gruppi, e mai il monitor stesso', function () {
     Livewire::test(EditMonitor::class, ['record' => $group->getRouteKey()])
         ->assertFormFieldHidden('target')
         ->assertFormFieldHidden('timeout_seconds')
+        ->assertFormFieldVisible('silences_children')
         ->assertFormFieldExists('parent_id', fn (Select $field): bool => $field->getOptions() === [$other->id => 'interni']);
 });

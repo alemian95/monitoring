@@ -39,6 +39,7 @@ class Monitor extends Model
     protected $attributes = [
         'is_inverted' => false,
         'invert_keyword' => false,
+        'silences_children' => false,
     ];
 
     /**
@@ -74,6 +75,19 @@ class Monitor extends Model
     public function children(): HasMany
     {
         return $this->hasMany(self::class, 'parent_id');
+    }
+
+    /**
+     * Se gli alert di giu' e su dei figli passano da qui invece che da loro.
+     *
+     * Solo un gruppo attivo: un gruppo in pausa non controlla nessuno, e se
+     * zittisse lo stesso i figli un guasto non lo direbbe piu' nessuno. Il
+     * tipo e' nella regola perche' cambiare tipo a un gruppo lascia la
+     * colonna com'era.
+     */
+    public function speaksForChildren(): bool
+    {
+        return $this->type === MonitorType::Group && $this->is_active && $this->silences_children;
     }
 
     /**
@@ -357,6 +371,7 @@ class Monitor extends Model
             'connection_url' => 'encrypted',
             'is_inverted' => 'boolean',
             'invert_keyword' => 'boolean',
+            'silences_children' => 'boolean',
             'timeout_seconds' => 'integer',
             'max_response_time_ms' => 'integer',
             'interval_minutes' => 'integer',

@@ -87,6 +87,8 @@ class CheckMonitor implements ShouldBeUnique, ShouldQueue
             Cache::forget($this->alertKey());
 
             $this->alert("✅ **{$this->monitor->name}** è tornato su{$this->targetSuffix()}");
+
+            $this->wakeGroup();
         }
     }
 
@@ -116,6 +118,9 @@ class CheckMonitor implements ShouldBeUnique, ShouldQueue
             return;
         }
 
+        $wasDown = $this->monitor->is_up === false;
+        $previousReason = $this->monitor->last_failure_reason;
+
         $this->monitor->update([
             'is_up' => false,
             'last_failure_reason' => $exception->getMessage(),
@@ -134,10 +139,39 @@ class CheckMonitor implements ShouldBeUnique, ShouldQueue
         // chiave non c'è, e la chiave scade da sola. Così un target caduto alle
         // tre di notte continua a farsi sentire, senza una colonna in più da
         // tenere allineata allo stato.
+        //
+        // Un gruppo che parla per i figli e' l'unico a farsi sentire per loro:
+        // se l'elenco di chi e' giu' cambia, e' un fatto nuovo e va detto
+        // subito, non al promemoria. Per gli altri monitor il motivo cambia da
+        // solo — «risposta in 1234 ms», poi «in 1302» — e ri-allertare a ogni
+        // variazione sarebbe rumore.
+        if ($this->monitor->speaksForChildren() && $previousReason !== $exception->getMessage()) {
+            Cache::forget($this->alertKey());
+        }
+
         if (Cache::add($this->alertKey(), true, now()->addMinutes(self::REALERT_AFTER_MINUTES))) {
             $this->alert(
                 "🔴 **{$this->monitor->name}** è giù{$this->targetSuffix()}".PHP_EOL.$exception->getMessage()
             );
+        }
+
+        if (! $wasDown) {
+            $this->wakeGroup();
+        }
+    }
+
+    /**
+     * Quando i figli tacciono l'alert lo manda il gruppo, che altrimenti se ne
+     * accorgerebbe solo al suo prossimo giro. Un gruppo gia' in coda o in
+     * retry assorbe il dispatch: il job e' unico per monitor, e a ogni
+     * tentativo rilegge lo stato dei figli.
+     */
+    private function wakeGroup(): void
+    {
+        $group = $this->monitor->parent;
+
+        if ($group?->speaksForChildren()) {
+            self::dispatch($group);
         }
     }
 
@@ -156,11 +190,18 @@ class CheckMonitor implements ShouldBeUnique, ShouldQueue
     }
 
     /**
+     * Un figlio di un gruppo che parla per lui tace: lo stato lo scrive
+     * comunque, ed e' da li' che il gruppo lo legge.
+     *
      * Risolto qui e non iniettato nel costruttore: il job viene serializzato in
      * coda, e `failed()` non riceve dipendenze.
      */
     private function alert(string $message): void
     {
+        if ($this->monitor->parent?->speaksForChildren()) {
+            return;
+        }
+
         app(AlertChannel::class)->send($this->monitor, $message);
     }
 }

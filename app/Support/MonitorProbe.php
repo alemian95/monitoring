@@ -467,9 +467,9 @@ class MonitorProbe
      * Un figlio mai controllato o in pausa non conta: non sappiamo niente di
      * lui, e un gruppo vuoto non ha niente da dire, quindi e' su.
      *
-     * ponytail: lo stato del gruppo segue quello dei figli con al massimo un
-     * suo intervallo di ritardo. Upgrade path se servira' immediato: accodare
-     * il check del gruppo quando un figlio cambia stato, in `CheckMonitor`.
+     * Lo stato del gruppo segue quello dei figli con al massimo un suo
+     * intervallo di ritardo, tranne quando parla per loro: allora un figlio
+     * che cambia stato lo sveglia subito (`CheckMonitor::wakeGroup()`).
      *
      * @throws MonitorCheckFailed
      */

@@ -167,6 +167,10 @@ class MonitorForm
                     ->numeric()
                     ->minValue(1)
                     ->visible(fn (Get $get): bool => ! self::isType($get, MonitorType::Push, MonitorType::Group)),
+                Toggle::make('silences_children')
+                    ->label('Un solo alert per il gruppo')
+                    ->helperText('I monitor del gruppo non allertano da soli: avvisa il gruppo, con chi è giù, e di nuovo quando l\'elenco cambia.')
+                    ->visible(fn (Get $get): bool => self::isType($get, MonitorType::Group)),
                 Select::make('parent_id')
                     ->label('Gruppo')
                     ->helperText('Opzionale. Il gruppo risulta giù quando lo è uno dei suoi monitor.')

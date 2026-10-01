@@ -23,7 +23,8 @@ averli.
 - **Check alla Uptime Kuma** — upside-down mode, keyword invertita, campo
   JSON con valore atteso, database (MySQL/MariaDB, Postgres, SQL Server) con
   la connection URL cifrata, Redis (`AUTH` + `PING`) e SMTP (saluto, `EHLO`,
-  STARTTLS o TLS implicito), gruppi annidabili.
+  STARTTLS o TLS implicito), gruppi annidabili, anche con un solo alert per
+  tutti i figli.
 - **Canali di notifica** — Discord, email, webhook, Telegram, Slack
   (e Mattermost/Rocket.Chat), Teams, ntfy, Gotify, Pushover; scelti per
   monitor, con i predefiniti proposti sui nuovi e un pulsante di test.
@@ -111,9 +112,10 @@ rispetto a tutto il resto del sistema.
 
 Se cade il router, Zabbix manda un alert; questo ne manda uno per target. Con
 4 monitor non si nota, con 40 diventa il motivo per cui si smette di guardare
-gli alert. I gruppi ci sono, ma come in Uptime Kuma riassumono e non
-silenziano: il gruppo allerta e i figli pure. Il passo successivo e' un
-gruppo che, quando e' giu', tace per i figli.
+gli alert. Un gruppo con «un solo alert» parla per i suoi figli: allerta lui,
+con l'elenco di chi e' giu', e di nuovo quando l'elenco cambia. Resta fuori
+la dipendenza vera alla Zabbix — «se il router e' giu', di chi sta dietro non
+dirmi niente» — dove a tacere e' chi dipende, non chi e' raggruppato.
 
 ### Scala
 

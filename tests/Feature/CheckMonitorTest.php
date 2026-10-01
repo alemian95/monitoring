@@ -194,3 +194,61 @@ it('non fa fallire il recovery quando il monitor non ha canali', function () {
     Log::shouldHaveReceived('warning')->once();
     expect($monitor->refresh()->is_up)->toBeTrue();
 });
+
+it('un figlio di un gruppo che parla per lui tace, e sveglia il gruppo', function () {
+    $group = Monitor::factory()->group()->create(['silences_children' => true]);
+    $child = Monitor::factory()->create(['parent_id' => $group->id, 'is_up' => true]);
+
+    (new CheckMonitor($child))->failed(new MonitorCheckFailed('HTTP 500'));
+
+    Queue::assertNotPushed(SendAlert::class);
+    Queue::assertPushed(CheckMonitor::class, fn (CheckMonitor $job): bool => $job->monitor->is($group));
+    expect($child->refresh()->is_up)->toBeFalse();
+});
+
+it('anche il recovery di un figlio silenziato passa dal gruppo', function () {
+    $group = Monitor::factory()->group()->create(['silences_children' => true]);
+    $child = Monitor::factory()->create(['parent_id' => $group->id, 'is_up' => false]);
+    $this->mock(MonitorProbe::class)->shouldReceive('check')->once()->andReturn(new ProbeResult(42, 200));
+
+    (new CheckMonitor($child))->handle(app(MonitorProbe::class));
+
+    Queue::assertNotPushed(SendAlert::class);
+    Queue::assertPushed(CheckMonitor::class, fn (CheckMonitor $job): bool => $job->monitor->is($group));
+});
+
+it('un figlio ancora giù non risveglia il gruppo a ogni giro', function () {
+    $group = Monitor::factory()->group()->create(['silences_children' => true]);
+    $child = Monitor::factory()->create(['parent_id' => $group->id, 'is_up' => false]);
+
+    (new CheckMonitor($child))->failed(new MonitorCheckFailed('HTTP 500'));
+
+    Queue::assertNotPushed(CheckMonitor::class);
+});
+
+it('i figli allertano da soli se il gruppo non parla per loro o è in pausa', function (array $group) {
+    $group = Monitor::factory()->group()->create($group);
+    $child = Monitor::factory()->create(['parent_id' => $group->id, 'is_up' => true]);
+
+    (new CheckMonitor($child))->failed(new MonitorCheckFailed('HTTP 500'));
+
+    Queue::assertPushed(SendAlert::class);
+    Queue::assertNotPushed(CheckMonitor::class);
+})->with([
+    'gruppo che riassume soltanto' => [['silences_children' => false]],
+    'gruppo in pausa' => [['silences_children' => true, 'is_active' => false]],
+]);
+
+it('un gruppo che parla per i figli ri-allerta quando cambia chi è giù, non prima', function () {
+    $group = Monitor::factory()->group()->create(['silences_children' => true, 'is_up' => true]);
+
+    (new CheckMonitor($group))->failed(new MonitorCheckFailed('Giù nel gruppo: api'));
+    (new CheckMonitor($group->refresh()))->failed(new MonitorCheckFailed('Giù nel gruppo: api'));
+    (new CheckMonitor($group->refresh()))->failed(new MonitorCheckFailed('Giù nel gruppo: api, database'));
+
+    Queue::assertPushed(SendAlert::class, 2);
+});
+
+it('un monitor che non è un gruppo non parla per nessuno, qualunque cosa dica la colonna', function () {
+    expect(Monitor::factory()->make(['silences_children' => true])->speaksForChildren())->toBeFalse();
+});
