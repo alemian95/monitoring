@@ -58,6 +58,7 @@ class MonitorProbe
             MonitorType::Database => $this->checkDatabase($monitor),
             MonitorType::Redis => $this->checkRedis($monitor),
             MonitorType::Smtp => $this->checkSmtp($monitor),
+            MonitorType::Group => $this->checkGroup($monitor),
             MonitorType::Push => $this->checkPush($monitor),
         };
     }
@@ -453,6 +454,35 @@ class MonitorProbe
             throw new MonitorCheckFailed(
                 "Ultimo ping {$monitor->last_ping_at->diffForHumans()}, atteso ogni {$monitor->grace_minutes} min"
             );
+        }
+
+        return new ProbeResult(null);
+    }
+
+    /**
+     * Giu' se almeno un figlio attivo e' giu'. Legge lo stato che i figli
+     * hanno gia' scritto, senza ricontrollarli: ognuno ha i suoi retry, e
+     * rifarli qui raddoppierebbe il traffico verso i target.
+     *
+     * Un figlio mai controllato o in pausa non conta: non sappiamo niente di
+     * lui, e un gruppo vuoto non ha niente da dire, quindi e' su.
+     *
+     * ponytail: lo stato del gruppo segue quello dei figli con al massimo un
+     * suo intervallo di ritardo. Upgrade path se servira' immediato: accodare
+     * il check del gruppo quando un figlio cambia stato, in `CheckMonitor`.
+     *
+     * @throws MonitorCheckFailed
+     */
+    private function checkGroup(Monitor $monitor): ProbeResult
+    {
+        $down = $monitor->children()
+            ->where('is_active', true)
+            ->where('is_up', false)
+            ->orderBy('name')
+            ->pluck('name');
+
+        if ($down->isNotEmpty()) {
+            throw new MonitorCheckFailed('Giù nel gruppo: '.$down->implode(', '));
         }
 
         return new ProbeResult(null);

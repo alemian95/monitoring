@@ -6,6 +6,7 @@ use App\Enums\DnsRecordType;
 use App\Enums\MonitorType;
 use App\Enums\MonitorVisibility;
 use App\Enums\SmtpSecurity;
+use App\Models\Monitor;
 use App\Models\NotificationChannel;
 use Filament\Forms\Components\KeyValue;
 use Filament\Forms\Components\Select;
@@ -15,6 +16,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
+use Illuminate\Database\Eloquent\Builder;
 
 class MonitorForm
 {
@@ -45,10 +47,11 @@ class MonitorForm
                     })
                     // Un push monitor sorveglia un job, non un indirizzo: non
                     // c'e' niente da contattare, il nome basta a identificarlo.
+                    // Lo stesso per un gruppo, che legge solo i suoi figli.
                     // Database e Redis hanno un indirizzo, ma con dentro la
                     // password: sta in `connection_url`, cifrato.
-                    ->required(fn (Get $get): bool => ! self::isType($get, MonitorType::Push, ...self::USES_CONNECTION_URL))
-                    ->visible(fn (Get $get): bool => ! self::isType($get, MonitorType::Push, ...self::USES_CONNECTION_URL)),
+                    ->required(fn (Get $get): bool => ! self::isType($get, MonitorType::Push, MonitorType::Group, ...self::USES_CONNECTION_URL))
+                    ->visible(fn (Get $get): bool => ! self::isType($get, MonitorType::Push, MonitorType::Group, ...self::USES_CONNECTION_URL)),
                 TextInput::make('connection_url')
                     ->label('Connection URL')
                     ->placeholder(fn (Get $get): string => self::isType($get, MonitorType::Redis)
@@ -157,19 +160,33 @@ class MonitorForm
                     ->maxValue(30)
                     ->default(10)
                     ->required()
-                    ->visible(fn (Get $get): bool => ! self::isType($get, MonitorType::Push)),
+                    ->visible(fn (Get $get): bool => ! self::isType($get, MonitorType::Push, MonitorType::Group)),
                 TextInput::make('max_response_time_ms')
                     ->label('Tempo di risposta massimo (ms)')
                     ->helperText('Opzionale. Oltre la soglia il check conta come fallito.')
                     ->numeric()
                     ->minValue(1)
-                    ->visible(fn (Get $get): bool => ! self::isType($get, MonitorType::Push)),
+                    ->visible(fn (Get $get): bool => ! self::isType($get, MonitorType::Push, MonitorType::Group)),
+                Select::make('parent_id')
+                    ->label('Gruppo')
+                    ->helperText('Opzionale. Il gruppo risulta giù quando lo è uno dei suoi monitor.')
+                    ->relationship(
+                        'parent',
+                        'name',
+                        // Solo gruppi, e non se stesso: un gruppo dentro se
+                        // stesso leggerebbe il proprio stato.
+                        fn (Builder $query, ?Monitor $record): Builder => $query
+                            ->where('type', MonitorType::Group)
+                            ->when($record, fn (Builder $query): Builder => $query->whereKeyNot($record->getKey())),
+                    )
+                    ->searchable()
+                    ->preload(),
                 Toggle::make('is_active')
                     ->default(true),
                 Toggle::make('is_inverted')
                     ->label('Invertito (upside-down)')
                     ->helperText('Giù quando risponde, su quando non risponde: per ciò che deve restare irraggiungibile.')
-                    ->visible(fn (Get $get): bool => ! self::isType($get, MonitorType::Push)),
+                    ->visible(fn (Get $get): bool => ! self::isType($get, MonitorType::Push, MonitorType::Group)),
                 Select::make('visibility')
                     ->label('Pagina di stato')
                     ->helperText('Chi puo vedere questo servizio fuori dal pannello.')

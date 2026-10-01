@@ -49,6 +49,14 @@ class MonitorFactory extends Factory
         ]);
     }
 
+    public function group(): static
+    {
+        return $this->state(fn (): array => [
+            'type' => MonitorType::Group,
+            'target' => null,
+        ]);
+    }
+
     public function dns(): static
     {
         return $this->state(fn (): array => [

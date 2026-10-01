@@ -35,6 +35,11 @@ class MonitorsTable
                 TextColumn::make('target')
                     ->searchable()
                     ->limit(40),
+                TextColumn::make('parent.name')
+                    ->label('Gruppo')
+                    ->placeholder('—')
+                    ->sortable()
+                    ->toggleable(),
                 IconColumn::make('is_up')
                     ->label('Stato')
                     ->boolean()

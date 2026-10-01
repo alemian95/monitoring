@@ -1,6 +1,6 @@
 # Monitoring
 
-Controlla sette tipi di target su un intervallo per-target e avvisa i canali
+Controlla otto tipi di target su un intervallo per-target e avvisa i canali
 scelti per ciascuno (Discord, email, Telegram, Slack, Teams, ntfy, Gotify,
 Pushover o un webhook) quando uno e' giu', con recovery quando torna su:
 
@@ -15,6 +15,8 @@ Pushover o un webhook) quando uno e' giu', con recovery quando torna su:
   password;
 - **SMTP** — il server saluta con 220 e accetta `EHLO`, in chiaro, con
   STARTTLS o in TLS implicito, verificando il certificato;
+- **gruppo** — non contatta niente: e' giu' quando lo e' uno dei suoi
+  monitor, e riassume in uno stato un servizio fatto di piu' pezzi;
 - **push** — il contrario degli altri: un job esterno chiama noi, e se smette
   di farlo e' lui a risultare giu'.
 

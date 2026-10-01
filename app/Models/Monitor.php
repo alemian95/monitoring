@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
@@ -57,6 +58,22 @@ class Monitor extends Model
         static::created(function (self $monitor): void {
             $monitor->notificationChannels()->attach(NotificationChannel::query()->isDefault()->pluck('id'));
         });
+    }
+
+    /**
+     * @return BelongsTo<Monitor, $this>
+     */
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(self::class);
+    }
+
+    /**
+     * @return HasMany<Monitor, $this>
+     */
+    public function children(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_id');
     }
 
     /**

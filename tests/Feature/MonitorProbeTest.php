@@ -437,3 +437,35 @@ it('cifra la connection URL a riposo', function () {
 
     expect($monitor->getRawOriginal('connection_url'))->not->toContain('segreto');
 });
+
+it('un gruppo è giù quando lo è un suo monitor attivo, e dice quale', function () {
+    $group = Monitor::factory()->group()->create();
+    Monitor::factory()->create(['parent_id' => $group->id, 'name' => 'api', 'is_up' => false]);
+    Monitor::factory()->create(['parent_id' => $group->id, 'name' => 'sito', 'is_up' => true]);
+
+    app(MonitorProbe::class)->check($group);
+})->throws(MonitorCheckFailed::class, 'Giù nel gruppo: api');
+
+it('un gruppo ignora i monitor in pausa e quelli mai controllati', function () {
+    $group = Monitor::factory()->group()->create();
+    Monitor::factory()->create(['parent_id' => $group->id, 'is_up' => false, 'is_active' => false]);
+    Monitor::factory()->create(['parent_id' => $group->id, 'is_up' => null]);
+
+    expect(app(MonitorProbe::class)->check($group)->responseTimeMs)->toBeNull();
+});
+
+it('un gruppo dentro un gruppo conta come un monitor qualunque', function () {
+    $outer = Monitor::factory()->group()->create();
+    Monitor::factory()->group()->create(['parent_id' => $outer->id, 'name' => 'backend', 'is_up' => false]);
+
+    app(MonitorProbe::class)->check($outer);
+})->throws(MonitorCheckFailed::class, 'Giù nel gruppo: backend');
+
+it('cancellare un gruppo libera i suoi monitor', function () {
+    $group = Monitor::factory()->group()->create();
+    $child = Monitor::factory()->create(['parent_id' => $group->id]);
+
+    $group->delete();
+
+    expect($child->refresh()->parent_id)->toBeNull();
+});

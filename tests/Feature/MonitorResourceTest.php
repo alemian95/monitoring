@@ -8,6 +8,7 @@ use App\Filament\Resources\Monitors\Pages\ListMonitors;
 use App\Jobs\CheckMonitor;
 use App\Models\Monitor;
 use App\Models\User;
+use Filament\Forms\Components\Select;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Livewire\Livewire;
@@ -146,4 +147,15 @@ it('chiede porta e sicurezza per SMTP, e una URL redis per Redis', function () {
         ->fillForm(['name' => 'cache', 'connection_url' => 'mysql://root@db/app'])
         ->call('create')
         ->assertHasFormErrors(['connection_url' => 'regex']);
+});
+
+it('propone come gruppo solo i gruppi, e mai il monitor stesso', function () {
+    $group = Monitor::factory()->group()->create(['name' => 'piattaforma']);
+    $other = Monitor::factory()->group()->create(['name' => 'interni']);
+    Monitor::factory()->create(['name' => 'sito']);
+
+    Livewire::test(EditMonitor::class, ['record' => $group->getRouteKey()])
+        ->assertFormFieldHidden('target')
+        ->assertFormFieldHidden('timeout_seconds')
+        ->assertFormFieldExists('parent_id', fn (Select $field): bool => $field->getOptions() === [$other->id => 'interni']);
 });
