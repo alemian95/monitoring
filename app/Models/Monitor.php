@@ -28,6 +28,18 @@ class Monitor extends Model
     protected $guarded = [];
 
     /**
+     * I default del database, anche in memoria: un monitor appena creato e
+     * non riletto avrebbe `null`, e il probe confronta questi booleani in
+     * modo stretto.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'is_inverted' => false,
+        'invert_keyword' => false,
+    ];
+
+    /**
      * Il token di ping nasce con il monitor, qualunque sia il tipo: cosi'
      * cambiare tipo a un monitor esistente non richiede di generarlo al volo, e
      * `pingUrl()` resta una lettura pura.
@@ -322,6 +334,10 @@ class Monitor extends Model
             // Un header `Authorization` e' una credenziale: cifrata a riposo,
             // cosi' un dump del database non la regala.
             'http_headers' => 'encrypted:array',
+            // Dentro c'e' la password del database.
+            'connection_url' => 'encrypted',
+            'is_inverted' => 'boolean',
+            'invert_keyword' => 'boolean',
             'timeout_seconds' => 'integer',
             'max_response_time_ms' => 'integer',
             'interval_minutes' => 'integer',

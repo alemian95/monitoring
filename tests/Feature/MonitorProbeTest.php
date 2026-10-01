@@ -6,6 +6,7 @@ use App\Models\Monitor;
 use App\Support\DnsResolver;
 use App\Support\MonitorProbe;
 use App\Support\ProbeResult;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
@@ -335,3 +336,104 @@ it('lancia subito quando il job si e dichiarato fallito, anche se il ping e fres
         'last_ping_failure' => 'backup: disco pieno',
     ]));
 })->throws(MonitorCheckFailed::class, 'backup: disco pieno');
+
+it('lancia quando compare il testo che non deve esserci', function () {
+    Http::fake(['https://example.test/*' => Http::response('<h1>Manutenzione</h1>', 200)]);
+
+    $monitor = Monitor::factory()->create([
+        'target' => 'https://example.test/',
+        'expected_body_contains' => 'Manutenzione',
+        'invert_keyword' => true,
+    ]);
+
+    app(MonitorProbe::class)->check($monitor);
+})->throws(MonitorCheckFailed::class, 'Corpo della risposta con «Manutenzione»');
+
+it('passa quando il testo che non deve esserci manca', function () {
+    Http::fake(['https://example.test/*' => Http::response('<h1>Benvenuto</h1>', 200)]);
+
+    $monitor = Monitor::factory()->create([
+        'target' => 'https://example.test/',
+        'expected_body_contains' => 'Manutenzione',
+        'invert_keyword' => true,
+    ]);
+
+    app(MonitorProbe::class)->check($monitor);
+})->throwsNoExceptions();
+
+it('confronta il campo JSON con il valore atteso', function (mixed $value, string $expected, bool $passes) {
+    Http::fake(['https://example.test/*' => Http::response(['data' => ['status' => $value]], 200)]);
+
+    $monitor = Monitor::factory()->create([
+        'target' => 'https://example.test/health',
+        'json_path' => 'data.status',
+        'json_expected_value' => $expected,
+    ]);
+
+    $check = fn () => app(MonitorProbe::class)->check($monitor);
+
+    $passes
+        ? expect($check)->not->toThrow(MonitorCheckFailed::class)
+        : expect($check)->toThrow(MonitorCheckFailed::class, 'JSON «data.status» vale');
+})->with([
+    'stringa uguale' => ['ok', 'ok', true],
+    'stringa diversa' => ['degraded', 'ok', false],
+    'booleano scritto come JSON' => [true, 'true', true],
+    'numero scritto come JSON' => [42, '42', true],
+]);
+
+it('lancia quando il campo JSON manca, anche senza valore atteso', function () {
+    Http::fake(['https://example.test/*' => Http::response(['data' => []], 200)]);
+
+    $monitor = Monitor::factory()->create([
+        'target' => 'https://example.test/health',
+        'json_path' => 'data.status',
+    ]);
+
+    app(MonitorProbe::class)->check($monitor);
+})->throws(MonitorCheckFailed::class, 'JSON senza «data.status»');
+
+it('invertito, un target che non risponde è su', function () {
+    Http::fake(['https://example.test/*' => Http::response('', 503)]);
+
+    $monitor = Monitor::factory()->create(['target' => 'https://example.test/', 'is_inverted' => true]);
+
+    expect(app(MonitorProbe::class)->check($monitor)->responseTimeMs)->toBeNull();
+});
+
+it('invertito, un target irraggiungibile è su', function () {
+    Http::fake(fn () => throw new ConnectionException('timeout'));
+
+    $monitor = Monitor::factory()->create(['target' => 'https://example.test/', 'is_inverted' => true]);
+
+    app(MonitorProbe::class)->check($monitor);
+})->throwsNoExceptions();
+
+it('invertito, un target che risponde è giù', function () {
+    Http::fake(['https://example.test/*' => Http::response('ok', 200)]);
+
+    $monitor = Monitor::factory()->create(['target' => 'https://example.test/', 'is_inverted' => true]);
+
+    app(MonitorProbe::class)->check($monitor);
+})->throws(MonitorCheckFailed::class, 'monitor è invertito');
+
+it('passa quando il database risponde, e chiude la connessione', function () {
+    $monitor = Monitor::factory()->database()->create();
+
+    $result = app(MonitorProbe::class)->check($monitor);
+
+    expect($result->responseTimeMs)->toBeInt()
+        ->and(DB::getConnections())->not->toHaveKey("monitor-{$monitor->id}");
+});
+
+it('lancia con il messaggio del driver quando il database non accetta connessioni', function () {
+    $monitor = Monitor::factory()->database()->create(['connection_url' => 'mysql://root@127.0.0.1:1/app']);
+
+    app(MonitorProbe::class)->check($monitor);
+})->throws(MonitorCheckFailed::class, 'Database — SQLSTATE[HY000] [2002]');
+
+it('cifra la connection URL a riposo', function () {
+    $monitor = Monitor::factory()->database()->create(['connection_url' => 'pgsql://u:segreto@db.test/app']);
+
+    expect($monitor->getRawOriginal('connection_url'))->not->toContain('segreto');
+});

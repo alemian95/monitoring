@@ -116,3 +116,20 @@ it('rilegge header cifrati e tipo di record nel form di modifica', function () {
     Livewire::test(EditMonitor::class, ['record' => $dns->getRouteKey()])
         ->assertFormSet(['dns_record_type' => DnsRecordType::A]);
 });
+
+it('per un database chiede la connection URL al posto del target', function () {
+    Livewire::test(CreateMonitor::class)
+        ->fillForm(['type' => MonitorType::Database->value])
+        ->assertFormFieldVisible('connection_url')
+        ->assertFormFieldHidden('target')
+        ->fillForm(['name' => 'db', 'connection_url' => 'sqlite:///etc/passwd'])
+        ->call('create')
+        ->assertHasFormErrors(['connection_url' => 'regex']);
+});
+
+it('mostra il valore JSON atteso solo quando c e un campo da leggere', function () {
+    Livewire::test(CreateMonitor::class)
+        ->assertFormFieldHidden('json_expected_value')
+        ->fillForm(['json_path' => 'data.status'])
+        ->assertFormFieldVisible('json_expected_value');
+});

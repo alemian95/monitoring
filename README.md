@@ -1,15 +1,21 @@
 # Monitoring
 
-Controlla quattro tipi di target su un intervallo per-target e avvisa i canali
+Controlla cinque tipi di target su un intervallo per-target e avvisa i canali
 scelti per ciascuno (Discord, email, Telegram, Slack, Teams, ntfy, Gotify,
 Pushover o un webhook) quando uno e' giu', con recovery quando torna su:
 
 - **HTTP** — metodo, header e corpo a scelta; status fra quelli accettati,
-  testo atteso nel corpo, tempo di risposta sotto soglia;
+  testo atteso (o vietato) nel corpo, un campo JSON con il valore atteso,
+  tempo di risposta sotto soglia;
 - **TCP** — la porta accetta connessioni;
 - **DNS** — il record esiste e, volendo, contiene ancora il valore atteso;
+- **database** — MySQL/MariaDB, Postgres o SQL Server accettano una
+  connessione e rispondono a `select 1`;
 - **push** — il contrario degli altri: un job esterno chiama noi, e se smette
   di farlo e' lui a risultare giu'.
+
+Ogni check tranne il push puo' essere invertito (upside-down): giu' quando
+risponde, per cio' che deve restare irraggiungibile.
 
 Di ogni check restano status, tempo di risposta e motivo del fallimento. Dal
 primo errore all'alert passano ~35 secondi, il tempo di quattro tentativi.

@@ -5,8 +5,16 @@ namespace App\Support;
 use App\Enums\MonitorType;
 use App\Exceptions\MonitorCheckFailed;
 use App\Models\Monitor;
+use Illuminate\Database\QueryException;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
+use Illuminate\Support\ConfigurationUrlParser;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use InvalidArgumentException;
+use PDO;
+use PDOException;
 
 class MonitorProbe
 {
@@ -17,10 +25,36 @@ class MonitorProbe
      */
     public function check(Monitor $monitor): ProbeResult
     {
+        if (! $monitor->is_inverted) {
+            return $this->probe($monitor);
+        }
+
+        // Upside-down: un target che deve restare irraggiungibile — una porta
+        // che non va esposta, una pagina di manutenzione che deve sparire. Il
+        // fallimento diventa il caso buono, e viceversa.
+        try {
+            $result = $this->probe($monitor);
+        } catch (MonitorCheckFailed|ConnectionException) {
+            return new ProbeResult(null);
+        }
+
+        throw new MonitorCheckFailed(
+            'Il target risponde, ma il monitor è invertito: atteso che non risponda',
+            $result->statusCode,
+            $result->responseTimeMs,
+        );
+    }
+
+    /**
+     * @throws MonitorCheckFailed
+     */
+    private function probe(Monitor $monitor): ProbeResult
+    {
         return match ($monitor->type) {
             MonitorType::Http => $this->checkHttp($monitor),
             MonitorType::Tcp => $this->checkTcp($monitor),
             MonitorType::Dns => $this->checkDns($monitor),
+            MonitorType::Database => $this->checkDatabase($monitor),
             MonitorType::Push => $this->checkPush($monitor),
         };
     }
@@ -60,9 +94,52 @@ class MonitorProbe
 
         $this->assertContainsExpected($monitor, $response->body(), 'Corpo della risposta', $status, $elapsedMs);
 
+        $this->assertJsonValue($monitor, $response, $status, $elapsedMs);
+
         $this->assertWithinThreshold($monitor, $elapsedMs, $status);
 
         return new ProbeResult($elapsedMs, $status);
+    }
+
+    /**
+     * Il database accetta connessioni e risponde a una query.
+     *
+     * Una connessione costruita al volo e buttata subito dopo: tenerla aperta
+     * fra un check e l'altro direbbe che il database era vivo quando l'abbiamo
+     * aperta, non adesso.
+     *
+     * ponytail: solo `select 1`. Upgrade path, se servira' sapere qualcosa di
+     * piu' (una replica in ritardo, una coda che cresce): una colonna con la
+     * query e il valore atteso.
+     *
+     * @throws MonitorCheckFailed
+     */
+    private function checkDatabase(Monitor $monitor): ProbeResult
+    {
+        $config = (new ConfigurationUrlParser)->parseConfiguration(['url' => (string) $monitor->connection_url]);
+        $config['name'] = "monitor-{$monitor->id}";
+        $config['options'] = [PDO::ATTR_TIMEOUT => $monitor->timeout_seconds];
+
+        $startedAt = hrtime(true);
+
+        try {
+            DB::build($config)->select('select 1');
+        } catch (QueryException|PDOException|InvalidArgumentException $exception) {
+            // Il messaggio del driver e non quello di Laravel, che aggiunge il
+            // nome interno della connessione e la query: rumore, nell'alert.
+            throw new MonitorCheckFailed(
+                'Database — '.($exception->getPrevious()?->getMessage() ?? $exception->getMessage()),
+                responseTimeMs: $this->elapsedMs($startedAt),
+            );
+        } finally {
+            DB::purge($config['name']);
+        }
+
+        $elapsedMs = $this->elapsedMs($startedAt);
+
+        $this->assertWithinThreshold($monitor, $elapsedMs, null);
+
+        return new ProbeResult($elapsedMs);
     }
 
     private function checkTcp(Monitor $monitor): ProbeResult
@@ -186,7 +263,9 @@ class MonitorProbe
      *
      * Vale per il corpo HTTP e per la risposta DNS: e' la stessa domanda — «la
      * risposta contiene ancora quello che mi aspetto» — e per questo e' la
-     * stessa colonna.
+     * stessa colonna. Con `invert_keyword` la domanda si capovolge: il testo
+     * non deve esserci, come «Errore» o «Manutenzione» in una pagina che
+     * risponde comunque 200.
      *
      * @throws MonitorCheckFailed
      */
@@ -197,16 +276,57 @@ class MonitorProbe
         ?int $statusCode,
         int $elapsedMs,
     ): void {
-        if (blank($monitor->expected_body_contains)
-            || str_contains($haystack, $monitor->expected_body_contains)) {
+        $expected = $monitor->expected_body_contains;
+
+        if (blank($expected) || str_contains($haystack, $expected) !== $monitor->invert_keyword) {
             return;
         }
 
         throw new MonitorCheckFailed(
-            "{$subject} senza «{$monitor->expected_body_contains}»",
+            $monitor->invert_keyword ? "{$subject} con «{$expected}»" : "{$subject} senza «{$expected}»",
             $statusCode,
             $elapsedMs,
         );
+    }
+
+    /**
+     * Un valore dentro una risposta JSON, letto con la dot notation di
+     * `data_get` (`data.status`, `checks.0.healthy`).
+     *
+     * Senza valore atteso basta che il campo esista. Il confronto e' fra
+     * stringhe, perche' il valore atteso arriva da un campo di testo: `true`
+     * e `1` si scrivono come li stampa JSON.
+     *
+     * ponytail: solo uguaglianza. Upgrade path se servira' una soglia (`< 100`
+     * elementi in coda): un operatore accanto al valore atteso.
+     *
+     * @throws MonitorCheckFailed
+     */
+    private function assertJsonValue(Monitor $monitor, Response $response, int $statusCode, int $elapsedMs): void
+    {
+        if (blank($monitor->json_path)) {
+            return;
+        }
+
+        $value = data_get($response->json(), $monitor->json_path);
+
+        if ($value === null) {
+            throw new MonitorCheckFailed("JSON senza «{$monitor->json_path}»", $statusCode, $elapsedMs);
+        }
+
+        if (blank($monitor->json_expected_value)) {
+            return;
+        }
+
+        $actual = is_string($value) ? $value : json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        if ($actual !== $monitor->json_expected_value) {
+            throw new MonitorCheckFailed(
+                "JSON «{$monitor->json_path}» vale «{$actual}», atteso «{$monitor->json_expected_value}»",
+                $statusCode,
+                $elapsedMs,
+            );
+        }
     }
 
     /**

@@ -20,6 +20,9 @@ averli.
   alert se smettono o se dichiarano `/fail`.
 - **DNS** — il record esiste e contiene ancora il valore atteso.
 - **HTTP oltre il GET** — metodo, header cifrati a riposo, corpo.
+- **Check alla Uptime Kuma** — upside-down mode, keyword invertita, campo
+  JSON con valore atteso, database (MySQL/MariaDB, Postgres, SQL Server) con
+  la connection URL cifrata.
 - **Canali di notifica** — Discord, email, webhook, Telegram, Slack
   (e Mattermost/Rocket.Chat), Teams, ntfy, Gotify, Pushover; scelti per
   monitor, con i predefiniti proposti sui nuovi e un pulsante di test.

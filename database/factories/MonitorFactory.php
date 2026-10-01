@@ -40,6 +40,15 @@ class MonitorFactory extends Factory
         ];
     }
 
+    public function database(): static
+    {
+        return $this->state(fn (): array => [
+            'type' => MonitorType::Database,
+            'target' => null,
+            'connection_url' => 'sqlite:///:memory:',
+        ]);
+    }
+
     public function dns(): static
     {
         return $this->state(fn (): array => [

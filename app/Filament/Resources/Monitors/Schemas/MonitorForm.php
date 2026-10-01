@@ -41,8 +41,19 @@ class MonitorForm
                     })
                     // Un push monitor sorveglia un job, non un indirizzo: non
                     // c'e' niente da contattare, il nome basta a identificarlo.
-                    ->required(fn (Get $get): bool => ! self::isType($get, MonitorType::Push))
-                    ->visible(fn (Get $get): bool => ! self::isType($get, MonitorType::Push)),
+                    // Un database ha un indirizzo, ma con dentro la password:
+                    // sta in `connection_url`, cifrato.
+                    ->required(fn (Get $get): bool => ! self::isType($get, MonitorType::Push, MonitorType::Database))
+                    ->visible(fn (Get $get): bool => ! self::isType($get, MonitorType::Push, MonitorType::Database)),
+                TextInput::make('connection_url')
+                    ->label('Connection URL')
+                    ->placeholder('mysql://utente:password@host:3306/database')
+                    ->helperText('mysql, mariadb, postgres o sqlsrv. Caratteri speciali della password in percent-encoding. Salvato cifrato.')
+                    ->password()
+                    ->revealable()
+                    ->regex('#^(mysql|mariadb|postgres|postgresql|pgsql|sqlsrv|mssql)://#')
+                    ->required(fn (Get $get): bool => self::isType($get, MonitorType::Database))
+                    ->visible(fn (Get $get): bool => self::isType($get, MonitorType::Database)),
                 Select::make('http_method')
                     ->label('Metodo')
                     ->options(array_combine(self::HTTP_METHODS, self::HTTP_METHODS))
@@ -77,8 +88,23 @@ class MonitorForm
                         ? 'Opzionale. Un record che non contiene questo valore conta come fallimento.'
                         : 'Opzionale. Un 200 che non contiene questo testo conta come fallimento.')
                     ->maxLength(255)
-                    ->visible(fn (Get $get): bool => self::isType($get, MonitorType::Http)
-                        || self::isType($get, MonitorType::Dns)),
+                    ->visible(fn (Get $get): bool => self::isType($get, MonitorType::Http, MonitorType::Dns)),
+                Toggle::make('invert_keyword')
+                    ->label('Il testo NON deve comparire')
+                    ->helperText('Per «Errore» o «Manutenzione» in una pagina che risponde comunque 200.')
+                    ->visible(fn (Get $get): bool => self::isType($get, MonitorType::Http, MonitorType::Dns)),
+                TextInput::make('json_path')
+                    ->label('Campo JSON')
+                    ->placeholder('data.status')
+                    ->helperText('Opzionale. Dot notation; il campo deve esistere nella risposta.')
+                    ->maxLength(255)
+                    ->live(onBlur: true)
+                    ->visible(fn (Get $get): bool => self::isType($get, MonitorType::Http)),
+                TextInput::make('json_expected_value')
+                    ->label('Valore atteso del campo')
+                    ->helperText('Opzionale. Confronto esatto: true, 42, "ok" si scrivono true, 42, ok.')
+                    ->maxLength(255)
+                    ->visible(fn (Get $get): bool => self::isType($get, MonitorType::Http) && filled($get('json_path'))),
                 KeyValue::make('http_headers')
                     ->label('Header')
                     ->keyLabel('Nome')
@@ -122,6 +148,10 @@ class MonitorForm
                     ->visible(fn (Get $get): bool => ! self::isType($get, MonitorType::Push)),
                 Toggle::make('is_active')
                     ->default(true),
+                Toggle::make('is_inverted')
+                    ->label('Invertito (upside-down)')
+                    ->helperText('Giù quando risponde, su quando non risponde: per ciò che deve restare irraggiungibile.')
+                    ->visible(fn (Get $get): bool => ! self::isType($get, MonitorType::Push)),
                 Select::make('visibility')
                     ->label('Pagina di stato')
                     ->helperText('Chi puo vedere questo servizio fuori dal pannello.')
@@ -144,8 +174,8 @@ class MonitorForm
      * creazione sia in modifica. `Get::enum()` normalizza comunque anche
      * l'eventuale forma stringa, a scopo difensivo.
      */
-    private static function isType(Get $get, MonitorType $type): bool
+    private static function isType(Get $get, MonitorType ...$types): bool
     {
-        return $get->enum('type', MonitorType::class, isNullable: true) === $type;
+        return in_array($get->enum('type', MonitorType::class, isNullable: true), $types, true);
     }
 }
