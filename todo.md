@@ -22,7 +22,8 @@ averli.
 - **HTTP oltre il GET** — metodo, header cifrati a riposo, corpo.
 - **Check alla Uptime Kuma** — upside-down mode, keyword invertita, campo
   JSON con valore atteso, database (MySQL/MariaDB, Postgres, SQL Server) con
-  la connection URL cifrata.
+  la connection URL cifrata, Redis (`AUTH` + `PING`) e SMTP (saluto, `EHLO`,
+  STARTTLS o TLS implicito).
 - **Canali di notifica** — Discord, email, webhook, Telegram, Slack
   (e Mattermost/Rocket.Chat), Teams, ntfy, Gotify, Pushover; scelti per
   monitor, con i predefiniti proposti sui nuovi e un pulsante di test.
@@ -74,8 +75,8 @@ con un'identita' che resta.
 
 - **ICMP**: il ping vero richiede `exec()` e privilegi, ed e' filtrato su
   molti hosting — vedi la nota gia' scritta in `MonitorProbe::checkTcp()`.
-- SMTP/IMAP, gRPC: il TCP connect dice gia' che la porta risponde; l'handshake
-  vero solo se compaiono target che lo pretendono.
+- IMAP/POP3, gRPC: il TCP connect dice gia' che la porta risponde; l'handshake
+  vero solo se compaiono target che lo pretendono. SMTP invece c'e'.
 
 ### Punto di osservazione singolo
 

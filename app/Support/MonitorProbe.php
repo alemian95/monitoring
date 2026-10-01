@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Enums\MonitorType;
+use App\Enums\SmtpSecurity;
 use App\Exceptions\MonitorCheckFailed;
 use App\Models\Monitor;
 use Illuminate\Database\QueryException;
@@ -55,6 +56,8 @@ class MonitorProbe
             MonitorType::Tcp => $this->checkTcp($monitor),
             MonitorType::Dns => $this->checkDns($monitor),
             MonitorType::Database => $this->checkDatabase($monitor),
+            MonitorType::Redis => $this->checkRedis($monitor),
+            MonitorType::Smtp => $this->checkSmtp($monitor),
             MonitorType::Push => $this->checkPush($monitor),
         };
     }
@@ -172,6 +175,222 @@ class MonitorProbe
         $this->assertWithinThreshold($monitor, $elapsedMs, null);
 
         return new ProbeResult($elapsedMs);
+    }
+
+    /**
+     * Redis risponde `+PONG` a un `PING`. La porta aperta non basta: un Redis
+     * che ha finito la memoria o che e' in caricamento accetta connessioni e
+     * rifiuta i comandi.
+     *
+     * L'URL e' quello di sempre — `redis://:password@host:6379`, `rediss://`
+     * per TLS — e sta in `connection_url`, cifrato, per via della password.
+     *
+     * @throws MonitorCheckFailed
+     */
+    private function checkRedis(Monitor $monitor): ProbeResult
+    {
+        $url = parse_url((string) $monitor->connection_url) ?: [];
+        $scheme = ($url['scheme'] ?? null) === 'rediss' ? 'tls' : 'tcp';
+        $address = "{$scheme}://".($url['host'] ?? '').':'.($url['port'] ?? 6379);
+
+        $startedAt = hrtime(true);
+        $socket = $this->openSocket('Redis', $address, $monitor, $startedAt);
+
+        try {
+            if (filled($url['pass'] ?? null)) {
+                $credentials = filled($url['user'] ?? null)
+                    ? [urldecode($url['user']), urldecode($url['pass'])]
+                    : [urldecode($url['pass'])];
+
+                $this->redisCommand($socket, ['AUTH', ...$credentials], '+OK', $startedAt);
+            }
+
+            $this->redisCommand($socket, ['PING'], '+PONG', $startedAt);
+        } finally {
+            fclose($socket);
+        }
+
+        $elapsedMs = $this->elapsedMs($startedAt);
+
+        $this->assertWithinThreshold($monitor, $elapsedMs, null);
+
+        return new ProbeResult($elapsedMs);
+    }
+
+    /**
+     * Il server SMTP saluta con 220, accetta `EHLO` e, se richiesto, passa a
+     * TLS. Il TCP connect si ferma prima: un Postfix con la coda piena apre la
+     * porta e risponde 421.
+     *
+     * Il certificato viene verificato, sia in TLS implicito sia dopo
+     * `STARTTLS`: un certificato scaduto sul server di posta e' un guasto, e i
+     * client lo rifiutano come lo rifiutiamo noi.
+     *
+     * ponytail: nessun `AUTH` e nessun invio. Upgrade path se servira'
+     * sapere che la posta parte davvero: un push monitor chiamato da chi la
+     * riceve, che e' l'unico a poterlo dire.
+     *
+     * @throws MonitorCheckFailed
+     */
+    private function checkSmtp(Monitor $monitor): ProbeResult
+    {
+        $security = $monitor->smtp_security ?? SmtpSecurity::None;
+        $host = (string) $monitor->target;
+        $scheme = $security === SmtpSecurity::Tls ? 'tls' : 'tcp';
+
+        $startedAt = hrtime(true);
+        $socket = $this->openSocket('SMTP', "{$scheme}://{$host}:{$monitor->port}", $monitor, $startedAt, ['peer_name' => $host]);
+
+        try {
+            $this->smtpCommand($socket, null, 220, $startedAt);
+            $this->smtpCommand($socket, "EHLO {$this->heloName()}", 250, $startedAt);
+
+            if ($security === SmtpSecurity::Starttls) {
+                $this->smtpCommand($socket, 'STARTTLS', 220, $startedAt);
+
+                error_clear_last();
+
+                if (@stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT) !== true) {
+                    throw new MonitorCheckFailed(
+                        'SMTP STARTTLS — handshake TLS fallito'.$this->lastErrorSuffix(),
+                        responseTimeMs: $this->elapsedMs($startedAt),
+                    );
+                }
+
+                $this->smtpCommand($socket, "EHLO {$this->heloName()}", 250, $startedAt);
+            }
+
+            fwrite($socket, "QUIT\r\n");
+        } finally {
+            fclose($socket);
+        }
+
+        $elapsedMs = $this->elapsedMs($startedAt);
+
+        $this->assertWithinThreshold($monitor, $elapsedMs, null);
+
+        return new ProbeResult($elapsedMs);
+    }
+
+    /**
+     * Una connessione con il timeout del monitor, sia per aprirla sia per
+     * ogni lettura: un server che accetta e poi tace deve fallire come uno
+     * che non accetta.
+     *
+     * @param  array<string, mixed>  $ssl
+     * @return resource
+     *
+     * @throws MonitorCheckFailed
+     */
+    private function openSocket(string $protocol, string $address, Monitor $monitor, int $startedAt, array $ssl = [])
+    {
+        error_clear_last();
+
+        $socket = @stream_socket_client(
+            $address,
+            $errno,
+            $errstr,
+            $monitor->timeout_seconds,
+            STREAM_CLIENT_CONNECT,
+            stream_context_create(['ssl' => $ssl]),
+        );
+
+        if ($socket === false) {
+            // Un handshake TLS fallito lascia `errstr` vuoto: il motivo vero
+            // e' solo nell'ultimo warning.
+            throw new MonitorCheckFailed(
+                "{$protocol} {$address} — ".($errstr ?: 'connessione fallita').$this->lastErrorSuffix(),
+                responseTimeMs: $this->elapsedMs($startedAt),
+            );
+        }
+
+        stream_set_timeout($socket, $monitor->timeout_seconds);
+
+        return $socket;
+    }
+
+    /**
+     * Un comando nel protocollo di Redis (RESP), non in quello inline: una
+     * password con uno spazio dentro spezzerebbe la riga in due argomenti.
+     *
+     * @param  resource  $socket
+     * @param  list<string>  $arguments
+     *
+     * @throws MonitorCheckFailed
+     */
+    private function redisCommand($socket, array $arguments, string $expected, int $startedAt): void
+    {
+        $command = '*'.count($arguments)."\r\n";
+
+        foreach ($arguments as $argument) {
+            $command .= '$'.strlen($argument)."\r\n{$argument}\r\n";
+        }
+
+        fwrite($socket, $command);
+
+        $reply = $this->readLine($socket);
+
+        if ($reply !== $expected) {
+            throw new MonitorCheckFailed(
+                "Redis {$arguments[0]} — ".($reply ?? 'nessuna risposta'),
+                responseTimeMs: $this->elapsedMs($startedAt),
+            );
+        }
+    }
+
+    /**
+     * Manda un comando SMTP (o nessuno, per leggere il saluto) e pretende il
+     * codice atteso. Le risposte su piu' righe — `250-PIPELINING`,
+     * `250-SIZE`… — finiscono alla riga col codice seguito da uno spazio.
+     *
+     * @param  resource  $socket
+     *
+     * @throws MonitorCheckFailed
+     */
+    private function smtpCommand($socket, ?string $command, int $expected, int $startedAt): void
+    {
+        if ($command !== null) {
+            fwrite($socket, "{$command}\r\n");
+        }
+
+        do {
+            $line = $this->readLine($socket);
+        } while ($line !== null && ($line[3] ?? ' ') === '-');
+
+        if ($line === null || (int) substr($line, 0, 3) !== $expected) {
+            $step = $command === null ? 'saluto' : strtok($command, ' ');
+
+            throw new MonitorCheckFailed(
+                "SMTP {$step} — ".($line ?? 'nessuna risposta').", atteso {$expected}",
+                responseTimeMs: $this->elapsedMs($startedAt),
+            );
+        }
+    }
+
+    /**
+     * @param  resource  $socket
+     */
+    private function readLine($socket): ?string
+    {
+        $line = fgets($socket);
+
+        return $line === false ? null : rtrim($line, "\r\n");
+    }
+
+    /**
+     * Il nome con cui ci presentiamo in `EHLO`. Qualche server rifiuta un
+     * nome che non e' un dominio, e `APP_URL` e' l'unico che abbiamo.
+     */
+    private function heloName(): string
+    {
+        return parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'localhost';
+    }
+
+    private function lastErrorSuffix(): string
+    {
+        $message = error_get_last()['message'] ?? null;
+
+        return $message === null ? '' : " ({$message})";
     }
 
     /**

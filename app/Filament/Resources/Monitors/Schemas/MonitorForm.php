@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Monitors\Schemas;
 use App\Enums\DnsRecordType;
 use App\Enums\MonitorType;
 use App\Enums\MonitorVisibility;
+use App\Enums\SmtpSecurity;
 use App\Models\NotificationChannel;
 use Filament\Forms\Components\KeyValue;
 use Filament\Forms\Components\Select;
@@ -22,6 +23,9 @@ class MonitorForm
     /** I metodi con un corpo: per gli altri il campo non ha senso. */
     private const METHODS_WITH_BODY = ['POST', 'PUT', 'PATCH', 'DELETE'];
 
+    /** I tipi il cui indirizzo contiene una password. */
+    private const USES_CONNECTION_URL = [MonitorType::Database, MonitorType::Redis];
+
     public static function configure(Schema $schema): Schema
     {
         return $schema
@@ -35,25 +39,32 @@ class MonitorForm
                     ->live(),
                 TextInput::make('target')
                     ->label(fn (Get $get): string => match (true) {
-                        self::isType($get, MonitorType::Tcp) => 'Host o IP',
+                        self::isType($get, MonitorType::Tcp, MonitorType::Smtp) => 'Host o IP',
                         self::isType($get, MonitorType::Dns) => 'Nome da risolvere',
                         default => 'URL',
                     })
                     // Un push monitor sorveglia un job, non un indirizzo: non
                     // c'e' niente da contattare, il nome basta a identificarlo.
-                    // Un database ha un indirizzo, ma con dentro la password:
-                    // sta in `connection_url`, cifrato.
-                    ->required(fn (Get $get): bool => ! self::isType($get, MonitorType::Push, MonitorType::Database))
-                    ->visible(fn (Get $get): bool => ! self::isType($get, MonitorType::Push, MonitorType::Database)),
+                    // Database e Redis hanno un indirizzo, ma con dentro la
+                    // password: sta in `connection_url`, cifrato.
+                    ->required(fn (Get $get): bool => ! self::isType($get, MonitorType::Push, ...self::USES_CONNECTION_URL))
+                    ->visible(fn (Get $get): bool => ! self::isType($get, MonitorType::Push, ...self::USES_CONNECTION_URL)),
                 TextInput::make('connection_url')
                     ->label('Connection URL')
-                    ->placeholder('mysql://utente:password@host:3306/database')
-                    ->helperText('mysql, mariadb, postgres o sqlsrv. Caratteri speciali della password in percent-encoding. Salvato cifrato.')
+                    ->placeholder(fn (Get $get): string => self::isType($get, MonitorType::Redis)
+                        ? 'redis://:password@host:6379'
+                        : 'mysql://utente:password@host:3306/database')
+                    ->helperText(fn (Get $get): string => (self::isType($get, MonitorType::Redis)
+                        ? 'redis, o rediss per TLS.'
+                        : 'mysql, mariadb, postgres o sqlsrv.')
+                        .' Caratteri speciali della password in percent-encoding. Salvato cifrato.')
                     ->password()
                     ->revealable()
-                    ->regex('#^(mysql|mariadb|postgres|postgresql|pgsql|sqlsrv|mssql)://#')
-                    ->required(fn (Get $get): bool => self::isType($get, MonitorType::Database))
-                    ->visible(fn (Get $get): bool => self::isType($get, MonitorType::Database)),
+                    ->regex(fn (Get $get): string => self::isType($get, MonitorType::Redis)
+                        ? '#^rediss?://#'
+                        : '#^(mysql|mariadb|postgres|postgresql|pgsql|sqlsrv|mssql)://#')
+                    ->required(fn (Get $get): bool => self::isType($get, ...self::USES_CONNECTION_URL))
+                    ->visible(fn (Get $get): bool => self::isType($get, ...self::USES_CONNECTION_URL)),
                 Select::make('http_method')
                     ->label('Metodo')
                     ->options(array_combine(self::HTTP_METHODS, self::HTTP_METHODS))
@@ -65,8 +76,15 @@ class MonitorForm
                     ->numeric()
                     ->minValue(1)
                     ->maxValue(65535)
-                    ->required(fn (Get $get): bool => self::isType($get, MonitorType::Tcp))
-                    ->visible(fn (Get $get): bool => self::isType($get, MonitorType::Tcp)),
+                    ->required(fn (Get $get): bool => self::isType($get, MonitorType::Tcp, MonitorType::Smtp))
+                    ->visible(fn (Get $get): bool => self::isType($get, MonitorType::Tcp, MonitorType::Smtp)),
+                Select::make('smtp_security')
+                    ->label('Sicurezza')
+                    ->helperText('Di solito: nessuna sulla 25, STARTTLS sulla 587, TLS implicito sulla 465.')
+                    ->options(SmtpSecurity::options())
+                    ->default(SmtpSecurity::Starttls->value)
+                    ->required(fn (Get $get): bool => self::isType($get, MonitorType::Smtp))
+                    ->visible(fn (Get $get): bool => self::isType($get, MonitorType::Smtp)),
                 Select::make('dns_record_type')
                     ->label('Tipo di record')
                     ->options(DnsRecordType::class)

@@ -133,3 +133,17 @@ it('mostra il valore JSON atteso solo quando c e un campo da leggere', function 
         ->fillForm(['json_path' => 'data.status'])
         ->assertFormFieldVisible('json_expected_value');
 });
+
+it('chiede porta e sicurezza per SMTP, e una URL redis per Redis', function () {
+    Livewire::test(CreateMonitor::class)
+        ->fillForm(['type' => MonitorType::Smtp->value])
+        ->assertFormFieldVisible('port')
+        ->assertFormFieldVisible('smtp_security')
+        ->assertFormFieldHidden('connection_url')
+        ->fillForm(['type' => MonitorType::Redis->value])
+        ->assertFormFieldHidden('target')
+        ->assertFormFieldHidden('smtp_security')
+        ->fillForm(['name' => 'cache', 'connection_url' => 'mysql://root@db/app'])
+        ->call('create')
+        ->assertHasFormErrors(['connection_url' => 'regex']);
+});

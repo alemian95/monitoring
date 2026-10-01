@@ -1,6 +1,6 @@
 # Monitoring
 
-Controlla cinque tipi di target su un intervallo per-target e avvisa i canali
+Controlla sette tipi di target su un intervallo per-target e avvisa i canali
 scelti per ciascuno (Discord, email, Telegram, Slack, Teams, ntfy, Gotify,
 Pushover o un webhook) quando uno e' giu', con recovery quando torna su:
 
@@ -11,6 +11,10 @@ Pushover o un webhook) quando uno e' giu', con recovery quando torna su:
 - **DNS** — il record esiste e, volendo, contiene ancora il valore atteso;
 - **database** — MySQL/MariaDB, Postgres o SQL Server accettano una
   connessione e rispondono a `select 1`;
+- **Redis** — risponde `+PONG` a un `PING`, dopo l'`AUTH` se l'URL ha una
+  password;
+- **SMTP** — il server saluta con 220 e accetta `EHLO`, in chiaro, con
+  STARTTLS o in TLS implicito, verificando il certificato;
 - **push** — il contrario degli altri: un job esterno chiama noi, e se smette
   di farlo e' lui a risultare giu'.
 

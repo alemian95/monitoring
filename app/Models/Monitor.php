@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\DnsRecordType;
 use App\Enums\MonitorType;
 use App\Enums\MonitorVisibility;
+use App\Enums\SmtpSecurity;
 use App\Enums\UptimeRange;
 use App\Support\Incident;
 use Database\Factories\MonitorFactory;
@@ -328,13 +329,14 @@ class Monitor extends Model
         return [
             'type' => MonitorType::class,
             'dns_record_type' => DnsRecordType::class,
+            'smtp_security' => SmtpSecurity::class,
             'visibility' => MonitorVisibility::class,
             'port' => 'integer',
             'expected_statuses' => 'array',
             // Un header `Authorization` e' una credenziale: cifrata a riposo,
             // cosi' un dump del database non la regala.
             'http_headers' => 'encrypted:array',
-            // Dentro c'e' la password del database.
+            // Dentro c'e' la password del database o di Redis.
             'connection_url' => 'encrypted',
             'is_inverted' => 'boolean',
             'invert_keyword' => 'boolean',
