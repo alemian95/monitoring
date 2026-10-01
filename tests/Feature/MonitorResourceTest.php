@@ -139,11 +139,11 @@ it('chiede porta e sicurezza per SMTP, e una URL redis per Redis', function () {
     Livewire::test(CreateMonitor::class)
         ->fillForm(['type' => MonitorType::Smtp->value])
         ->assertFormFieldVisible('port')
-        ->assertFormFieldVisible('smtp_security')
+        ->assertFormFieldVisible('tls_mode')
         ->assertFormFieldHidden('connection_url')
         ->fillForm(['type' => MonitorType::Redis->value])
         ->assertFormFieldHidden('target')
-        ->assertFormFieldHidden('smtp_security')
+        ->assertFormFieldHidden('tls_mode')
         ->fillForm(['name' => 'cache', 'connection_url' => 'mysql://root@db/app'])
         ->call('create')
         ->assertHasFormErrors(['connection_url' => 'regex']);
@@ -159,4 +159,17 @@ it('propone come gruppo solo i gruppi, e mai il monitor stesso', function () {
         ->assertFormFieldHidden('timeout_seconds')
         ->assertFormFieldVisible('silences_children')
         ->assertFormFieldExists('parent_id', fn (Select $field): bool => $field->getOptions() === [$other->id => 'interni']);
+});
+
+it('chiede porta e sicurezza per IMAP, solo l host per ICMP, e rifiuta un host che sembra un opzione', function () {
+    Livewire::test(CreateMonitor::class)
+        ->fillForm(['type' => MonitorType::Imap->value])
+        ->assertFormFieldVisible('port')
+        ->assertFormFieldVisible('tls_mode')
+        ->fillForm(['type' => MonitorType::Icmp->value])
+        ->assertFormFieldHidden('port')
+        ->assertFormFieldHidden('tls_mode')
+        ->fillForm(['name' => 'router', 'target' => '-f'])
+        ->call('create')
+        ->assertHasFormErrors(['target' => 'regex']);
 });

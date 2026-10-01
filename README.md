@@ -1,6 +1,6 @@
 # Monitoring
 
-Controlla otto tipi di target su un intervallo per-target e avvisa i canali
+Controlla undici tipi di target su un intervallo per-target e avvisa i canali
 scelti per ciascuno (Discord, email, Telegram, Slack, Teams, ntfy, Gotify,
 Pushover o un webhook) quando uno e' giu', con recovery quando torna su:
 
@@ -15,6 +15,10 @@ Pushover o un webhook) quando uno e' giu', con recovery quando torna su:
   password;
 - **SMTP** — il server saluta con 220 e accetta `EHLO`, in chiaro, con
   STARTTLS o in TLS implicito, verificando il certificato;
+- **IMAP / POP3** — il server saluta con `* OK` / `+OK`, con le stesse tre
+  modalita' di cifratura;
+- **ICMP** — la macchina risponde al `ping` di sistema, che deve essere
+  eseguibile da PHP;
 - **gruppo** — non contatta niente: e' giu' quando lo e' uno dei suoi
   monitor, e riassume in uno stato un servizio fatto di piu' pezzi. Volendo
   parla per loro: i figli tacciono e allerta solo il gruppo;

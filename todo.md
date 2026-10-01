@@ -23,7 +23,8 @@ averli.
 - **Check alla Uptime Kuma** — upside-down mode, keyword invertita, campo
   JSON con valore atteso, database (MySQL/MariaDB, Postgres, SQL Server) con
   la connection URL cifrata, Redis (`AUTH` + `PING`) e SMTP (saluto, `EHLO`,
-  STARTTLS o TLS implicito), gruppi annidabili, anche con un solo alert per
+  STARTTLS o TLS implicito), IMAP e POP3 (saluto, STARTTLS/STLS), ICMP
+  con il `ping` di sistema, gruppi annidabili, anche con un solo alert per
   tutti i figli.
 - **Canali di notifica** — Discord, email, webhook, Telegram, Slack
   (e Mattermost/Rocket.Chat), Teams, ntfy, Gotify, Pushover; scelti per
@@ -74,10 +75,11 @@ con un'identita' che resta.
 
 ### Protocolli che restano fuori
 
-- **ICMP**: il ping vero richiede `exec()` e privilegi, ed e' filtrato su
-  molti hosting — vedi la nota gia' scritta in `MonitorProbe::checkTcp()`.
-- IMAP/POP3, gRPC: il TCP connect dice gia' che la porta risponde; l'handshake
-  vero solo se compaiono target che lo pretendono. SMTP invece c'e'.
+- gRPC, MQTT, Kafka: il TCP connect dice gia' che la porta risponde;
+  l'handshake vero solo se compaiono target che lo pretendono.
+- ICMP c'e', ma dipende dal `ping` di sistema: su un hosting che non permette
+  `proc_open`, o che filtra l'ICMP in uscita, resta inutilizzabile. In quel
+  caso il check lo dice come guasto nostro, non come target giu'.
 
 ### Punto di osservazione singolo
 

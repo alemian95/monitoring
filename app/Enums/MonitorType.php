@@ -17,6 +17,15 @@ enum MonitorType: string
     /** Il server saluta con 220 e accetta `EHLO` (e `STARTTLS`, se richiesto). */
     case Smtp = 'smtp';
 
+    /** Il server saluta con `* OK` (e accetta `STARTTLS`, se richiesto). */
+    case Imap = 'imap';
+
+    /** Il server saluta con `+OK` (e accetta `STLS`, se richiesto). */
+    case Pop3 = 'pop3';
+
+    /** Ping ICMP vero, con il `ping` di sistema. */
+    case Icmp = 'icmp';
+
     /**
      * Non contatta niente: e' giu' quando lo e' uno dei suoi figli. Riassume
      * un servizio fatto di piu' pezzi — sito, API, database — in uno stato.

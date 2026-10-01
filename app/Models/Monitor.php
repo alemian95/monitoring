@@ -5,7 +5,7 @@ namespace App\Models;
 use App\Enums\DnsRecordType;
 use App\Enums\MonitorType;
 use App\Enums\MonitorVisibility;
-use App\Enums\SmtpSecurity;
+use App\Enums\TlsMode;
 use App\Enums\UptimeRange;
 use App\Support\Incident;
 use Database\Factories\MonitorFactory;
@@ -360,7 +360,7 @@ class Monitor extends Model
         return [
             'type' => MonitorType::class,
             'dns_record_type' => DnsRecordType::class,
-            'smtp_security' => SmtpSecurity::class,
+            'tls_mode' => TlsMode::class,
             'visibility' => MonitorVisibility::class,
             'port' => 'integer',
             'expected_statuses' => 'array',

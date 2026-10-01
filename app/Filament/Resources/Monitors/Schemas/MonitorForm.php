@@ -5,7 +5,7 @@ namespace App\Filament\Resources\Monitors\Schemas;
 use App\Enums\DnsRecordType;
 use App\Enums\MonitorType;
 use App\Enums\MonitorVisibility;
-use App\Enums\SmtpSecurity;
+use App\Enums\TlsMode;
 use App\Models\Monitor;
 use App\Models\NotificationChannel;
 use Filament\Forms\Components\KeyValue;
@@ -25,6 +25,12 @@ class MonitorForm
     /** I metodi con un corpo: per gli altri il campo non ha senso. */
     private const METHODS_WITH_BODY = ['POST', 'PUT', 'PATCH', 'DELETE'];
 
+    /** I protocolli di posta: parlano in chiaro, con STARTTLS o in TLS. */
+    private const MAIL = [MonitorType::Smtp, MonitorType::Imap, MonitorType::Pop3];
+
+    /** Host e porta, e nient'altro per arrivarci. */
+    private const USES_PORT = [MonitorType::Tcp, ...self::MAIL];
+
     /** I tipi il cui indirizzo contiene una password. */
     private const USES_CONNECTION_URL = [MonitorType::Database, MonitorType::Redis];
 
@@ -41,7 +47,7 @@ class MonitorForm
                     ->live(),
                 TextInput::make('target')
                     ->label(fn (Get $get): string => match (true) {
-                        self::isType($get, MonitorType::Tcp, MonitorType::Smtp) => 'Host o IP',
+                        self::isType($get, MonitorType::Icmp, ...self::USES_PORT) => 'Host o IP',
                         self::isType($get, MonitorType::Dns) => 'Nome da risolvere',
                         default => 'URL',
                     })
@@ -51,7 +57,10 @@ class MonitorForm
                     // Database e Redis hanno un indirizzo, ma con dentro la
                     // password: sta in `connection_url`, cifrato.
                     ->required(fn (Get $get): bool => ! self::isType($get, MonitorType::Push, MonitorType::Group, ...self::USES_CONNECTION_URL))
-                    ->visible(fn (Get $get): bool => ! self::isType($get, MonitorType::Push, MonitorType::Group, ...self::USES_CONNECTION_URL)),
+                    ->visible(fn (Get $get): bool => ! self::isType($get, MonitorType::Push, MonitorType::Group, ...self::USES_CONNECTION_URL))
+                    // Diventa un argomento di `ping`: un valore che comincia
+                    // con «-» sarebbe un'opzione. Il probe lo rifiuta comunque.
+                    ->regex(fn (Get $get): ?string => self::isType($get, MonitorType::Icmp) ? '/^[A-Za-z0-9][A-Za-z0-9.:-]*$/' : null),
                 TextInput::make('connection_url')
                     ->label('Connection URL')
                     ->placeholder(fn (Get $get): string => self::isType($get, MonitorType::Redis)
@@ -79,15 +88,19 @@ class MonitorForm
                     ->numeric()
                     ->minValue(1)
                     ->maxValue(65535)
-                    ->required(fn (Get $get): bool => self::isType($get, MonitorType::Tcp, MonitorType::Smtp))
-                    ->visible(fn (Get $get): bool => self::isType($get, MonitorType::Tcp, MonitorType::Smtp)),
-                Select::make('smtp_security')
+                    ->required(fn (Get $get): bool => self::isType($get, ...self::USES_PORT))
+                    ->visible(fn (Get $get): bool => self::isType($get, ...self::USES_PORT)),
+                Select::make('tls_mode')
                     ->label('Sicurezza')
-                    ->helperText('Di solito: nessuna sulla 25, STARTTLS sulla 587, TLS implicito sulla 465.')
-                    ->options(SmtpSecurity::options())
-                    ->default(SmtpSecurity::Starttls->value)
-                    ->required(fn (Get $get): bool => self::isType($get, MonitorType::Smtp))
-                    ->visible(fn (Get $get): bool => self::isType($get, MonitorType::Smtp)),
+                    ->helperText(fn (Get $get): string => 'Di solito: '.match (true) {
+                        self::isType($get, MonitorType::Imap) => 'STARTTLS sulla 143, TLS implicito sulla 993.',
+                        self::isType($get, MonitorType::Pop3) => 'STARTTLS (STLS) sulla 110, TLS implicito sulla 995.',
+                        default => 'nessuna sulla 25, STARTTLS sulla 587, TLS implicito sulla 465.',
+                    })
+                    ->options(TlsMode::options())
+                    ->default(TlsMode::Starttls->value)
+                    ->required(fn (Get $get): bool => self::isType($get, ...self::MAIL))
+                    ->visible(fn (Get $get): bool => self::isType($get, ...self::MAIL)),
                 Select::make('dns_record_type')
                     ->label('Tipo di record')
                     ->options(DnsRecordType::class)

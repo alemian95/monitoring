@@ -1,7 +1,7 @@
 <?php
 
 use App\Enums\MonitorType;
-use App\Enums\SmtpSecurity;
+use App\Enums\TlsMode;
 use App\Exceptions\MonitorCheckFailed;
 use App\Models\Monitor;
 use App\Support\MonitorProbe;
@@ -55,13 +55,13 @@ function redisMonitor(string $url): Monitor
     return Monitor::factory()->create(['type' => MonitorType::Redis, 'target' => null, 'connection_url' => $url, 'timeout_seconds' => 2]);
 }
 
-function smtpMonitor(string $host, int $port): Monitor
+function smtpMonitor(string $host, int $port, MonitorType $type = MonitorType::Smtp): Monitor
 {
     return Monitor::factory()->create([
-        'type' => MonitorType::Smtp,
+        'type' => $type,
         'target' => $host,
         'port' => $port,
-        'smtp_security' => SmtpSecurity::None,
+        'tls_mode' => TlsMode::None,
         'timeout_seconds' => 2,
     ]);
 }
@@ -103,7 +103,7 @@ it('lancia quando il server SMTP saluta con un errore', function () {
 it('lancia quando il server SMTP rifiuta STARTTLS', function () {
     [$host, $port] = fakeServer("220 mail.test\r\n", ["250 mail.test\r\n", "454 TLS not available\r\n"]);
     $monitor = smtpMonitor($host, $port);
-    $monitor->update(['smtp_security' => SmtpSecurity::Starttls]);
+    $monitor->update(['tls_mode' => TlsMode::Starttls]);
 
     app(MonitorProbe::class)->check($monitor);
 })->throws(MonitorCheckFailed::class, 'SMTP STARTTLS — 454 TLS not available, atteso 220');
@@ -115,3 +115,34 @@ it('lancia quando il server SMTP accetta e poi tace', function () {
 
     app(MonitorProbe::class)->check($monitor);
 })->throws(MonitorCheckFailed::class, 'SMTP saluto — nessuna risposta');
+
+it('passa quando il server IMAP o POP3 saluta come deve', function (MonitorType $type, string $greeting) {
+    [$host, $port] = fakeServer($greeting, []);
+
+    app(MonitorProbe::class)->check(smtpMonitor($host, $port, $type));
+})->with([
+    'IMAP' => [MonitorType::Imap, "* OK [CAPABILITY IMAP4rev1 STARTTLS] Dovecot ready.\r\n"],
+    'POP3' => [MonitorType::Pop3, "+OK Dovecot ready.\r\n"],
+])->throwsNoExceptions();
+
+it('lancia quando il server IMAP saluta con BYE', function () {
+    [$host, $port] = fakeServer("* BYE Too many connections\r\n", []);
+
+    app(MonitorProbe::class)->check(smtpMonitor($host, $port, MonitorType::Imap));
+})->throws(MonitorCheckFailed::class, 'IMAP saluto — * BYE Too many connections, atteso «* OK»');
+
+it('salta le righe non taggate di IMAP prima della risposta a STARTTLS', function () {
+    [$host, $port] = fakeServer("* OK ready\r\n", ["* CAPABILITY IMAP4rev1\r\na1 NO TLS not available\r\n"]);
+    $monitor = smtpMonitor($host, $port, MonitorType::Imap);
+    $monitor->update(['tls_mode' => TlsMode::Starttls]);
+
+    app(MonitorProbe::class)->check($monitor);
+})->throws(MonitorCheckFailed::class, 'IMAP STARTTLS — a1 NO TLS not available, atteso «a1 OK»');
+
+it('lancia quando il server POP3 rifiuta STLS', function () {
+    [$host, $port] = fakeServer("+OK ready\r\n", ["-ERR STLS not supported\r\n"]);
+    $monitor = smtpMonitor($host, $port, MonitorType::Pop3);
+    $monitor->update(['tls_mode' => TlsMode::Starttls]);
+
+    app(MonitorProbe::class)->check($monitor);
+})->throws(MonitorCheckFailed::class, 'POP3 STLS — -ERR STLS not supported, atteso «+OK»');

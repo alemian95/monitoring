@@ -2,15 +2,20 @@
 
 namespace App\Enums;
 
-enum SmtpSecurity: string
+/**
+ * Come parlare con un server di posta. La porta non basta a dedurlo: una 587
+ * senza STARTTLS e' un server configurato male, ed e' cio' che il check deve
+ * saper vedere.
+ */
+enum TlsMode: string
 {
-    /** In chiaro, tipicamente la 25 fra server. */
+    /** In chiaro: la 25 fra server, la 143 e la 110 senza cifratura. */
     case None = 'none';
 
-    /** Si parte in chiaro e si passa a TLS: la 587. */
+    /** Si parte in chiaro e si passa a TLS: 587, 143, 110. */
     case Starttls = 'starttls';
 
-    /** TLS dal primo byte: la 465. */
+    /** TLS dal primo byte: 465, 993, 995. */
     case Tls = 'tls';
 
     public function label(): string

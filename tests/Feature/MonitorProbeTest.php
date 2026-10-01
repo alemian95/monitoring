@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\DnsRecordType;
+use App\Enums\MonitorType;
 use App\Exceptions\MonitorCheckFailed;
 use App\Models\Monitor;
 use App\Support\DnsResolver;
@@ -9,6 +10,7 @@ use App\Support\ProbeResult;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
 
 /**
  * @param  list<array<string, mixed>>  $records
@@ -468,4 +470,51 @@ it('cancellare un gruppo libera i suoi monitor', function () {
     $group->delete();
 
     expect($child->refresh()->parent_id)->toBeNull();
+});
+
+function icmpMonitor(string $host = '192.0.2.1'): Monitor
+{
+    return Monitor::factory()->create(['type' => MonitorType::Icmp, 'target' => $host, 'timeout_seconds' => 2]);
+}
+
+it('legge il tempo di risposta dal ping', function () {
+    Process::fake(['*' => Process::result(
+        "64 bytes from 192.0.2.1: icmp_seq=0 ttl=64 time=12.6 ms\n\n--- 192.0.2.1 ping statistics ---\n1 packets transmitted, 1 packets received, 0.0% packet loss\n",
+    )]);
+
+    expect(app(MonitorProbe::class)->check(icmpMonitor())->responseTimeMs)->toBe(13);
+
+    Process::assertRan(fn ($process): bool => $process->command === ['ping', '-c', '1', '-W', PHP_OS_FAMILY === 'Darwin' ? '2000' : '2', '192.0.2.1']);
+});
+
+it('lancia con il riepilogo del ping quando il pacchetto si perde', function () {
+    Process::fake(['*' => Process::result(
+        "--- 192.0.2.1 ping statistics ---\n1 packets transmitted, 0 packets received, 100.0% packet loss\n",
+        exitCode: 2,
+    )]);
+
+    app(MonitorProbe::class)->check(icmpMonitor());
+})->throws(MonitorCheckFailed::class, 'ICMP 192.0.2.1 — 1 packets transmitted, 0 packets received, 100.0% packet loss');
+
+it('senza ping eseguibile non dichiara giù il target', function () {
+    Process::fake(['*' => Process::result(errorOutput: 'ping: command not found', exitCode: 127)]);
+
+    // Un'eccezione qualunque e non MonitorCheckFailed: `CheckMonitor::failed()`
+    // la tratta come guasto nostro, senza toccare `is_up`.
+    try {
+        app(MonitorProbe::class)->check(icmpMonitor());
+    } catch (RuntimeException $exception) {
+    }
+
+    expect($exception ?? null)->not->toBeNull()
+        ->not->toBeInstanceOf(MonitorCheckFailed::class)
+        ->getMessage()->toBe('ping non eseguibile: ping: command not found');
+});
+
+it('non passa a ping un host che sembra un opzione', function () {
+    Process::fake();
+
+    expect(fn () => app(MonitorProbe::class)->check(icmpMonitor('-f')))->toThrow(MonitorCheckFailed::class, 'host non valido');
+
+    Process::assertNothingRan();
 });

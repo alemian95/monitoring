@@ -3,7 +3,7 @@
 namespace App\Support;
 
 use App\Enums\MonitorType;
-use App\Enums\SmtpSecurity;
+use App\Enums\TlsMode;
 use App\Exceptions\MonitorCheckFailed;
 use App\Models\Monitor;
 use Illuminate\Database\QueryException;
@@ -13,9 +13,12 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\ConfigurationUrlParser;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 use PDO;
 use PDOException;
+use RuntimeException;
 
 class MonitorProbe
 {
@@ -58,6 +61,9 @@ class MonitorProbe
             MonitorType::Database => $this->checkDatabase($monitor),
             MonitorType::Redis => $this->checkRedis($monitor),
             MonitorType::Smtp => $this->checkSmtp($monitor),
+            MonitorType::Imap => $this->checkMailbox($monitor, 'IMAP', '* OK', 'a1 STARTTLS', 'a1 OK', 'a2 LOGOUT'),
+            MonitorType::Pop3 => $this->checkMailbox($monitor, 'POP3', '+OK', 'STLS', '+OK', 'QUIT'),
+            MonitorType::Icmp => $this->checkIcmp($monitor),
             MonitorType::Group => $this->checkGroup($monitor),
             MonitorType::Push => $this->checkPush($monitor),
         };
@@ -148,10 +154,6 @@ class MonitorProbe
 
     private function checkTcp(Monitor $monitor): ProbeResult
     {
-        // ponytail: TCP connect, non ICMP ping. Il ping vero richiede exec() e
-        // privilegi, è filtrato su molti hosting e va parsato a mano; inoltre un
-        // kernel vivo con il servizio morto supera il ping. Upgrade path: un caso
-        // MonitorType::Icmp con un ramo dedicato, dove i privilegi lo permettono.
         $startedAt = hrtime(true);
 
         $connection = @fsockopen(
@@ -224,8 +226,7 @@ class MonitorProbe
      * porta e risponde 421.
      *
      * Il certificato viene verificato, sia in TLS implicito sia dopo
-     * `STARTTLS`: un certificato scaduto sul server di posta e' un guasto, e i
-     * client lo rifiutano come lo rifiutiamo noi.
+     * `STARTTLS` (vedi `startTls()`).
      *
      * ponytail: nessun `AUTH` e nessun invio. Upgrade path se servira'
      * sapere che la posta parte davvero: un push monitor chiamato da chi la
@@ -235,29 +236,16 @@ class MonitorProbe
      */
     private function checkSmtp(Monitor $monitor): ProbeResult
     {
-        $security = $monitor->smtp_security ?? SmtpSecurity::None;
-        $host = (string) $monitor->target;
-        $scheme = $security === SmtpSecurity::Tls ? 'tls' : 'tcp';
-
         $startedAt = hrtime(true);
-        $socket = $this->openSocket('SMTP', "{$scheme}://{$host}:{$monitor->port}", $monitor, $startedAt, ['peer_name' => $host]);
+        $socket = $this->openMailSocket($monitor, 'SMTP', $startedAt);
 
         try {
             $this->smtpCommand($socket, null, 220, $startedAt);
             $this->smtpCommand($socket, "EHLO {$this->heloName()}", 250, $startedAt);
 
-            if ($security === SmtpSecurity::Starttls) {
+            if ($monitor->tls_mode === TlsMode::Starttls) {
                 $this->smtpCommand($socket, 'STARTTLS', 220, $startedAt);
-
-                error_clear_last();
-
-                if (@stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT) !== true) {
-                    throw new MonitorCheckFailed(
-                        'SMTP STARTTLS — handshake TLS fallito'.$this->lastErrorSuffix(),
-                        responseTimeMs: $this->elapsedMs($startedAt),
-                    );
-                }
-
+                $this->startTls($socket, 'SMTP STARTTLS', $startedAt);
                 $this->smtpCommand($socket, "EHLO {$this->heloName()}", 250, $startedAt);
             }
 
@@ -271,6 +259,167 @@ class MonitorProbe
         $this->assertWithinThreshold($monitor, $elapsedMs, null);
 
         return new ProbeResult($elapsedMs);
+    }
+
+    /**
+     * IMAP e POP3: il server saluta, passa a TLS se richiesto, e ci lascia
+     * andare. Cambiano solo le parole, che arrivano da chi chiama.
+     *
+     * ponytail: nessun login. Una casella che accetta la connessione ma
+     * rifiuta le credenziali resta su; upgrade path se servira': utente e
+     * password cifrati e un `LOGIN`/`USER`+`PASS` prima dell'uscita.
+     *
+     * @throws MonitorCheckFailed
+     */
+    private function checkMailbox(
+        Monitor $monitor,
+        string $protocol,
+        string $greeting,
+        string $startTlsCommand,
+        string $startTlsReply,
+        string $quitCommand,
+    ): ProbeResult {
+        $startedAt = hrtime(true);
+        $socket = $this->openMailSocket($monitor, $protocol, $startedAt);
+
+        try {
+            $this->mailboxCommand($socket, $protocol, null, $greeting, $startedAt);
+
+            if ($monitor->tls_mode === TlsMode::Starttls) {
+                $this->mailboxCommand($socket, $protocol, $startTlsCommand, $startTlsReply, $startedAt);
+                $this->startTls($socket, "{$protocol} ".Str::afterLast($startTlsCommand, ' '), $startedAt);
+            }
+
+            fwrite($socket, "{$quitCommand}\r\n");
+        } finally {
+            fclose($socket);
+        }
+
+        $elapsedMs = $this->elapsedMs($startedAt);
+
+        $this->assertWithinThreshold($monitor, $elapsedMs, null);
+
+        return new ProbeResult($elapsedMs);
+    }
+
+    /**
+     * Un ping ICMP con il `ping` di sistema: l'unico che non chiede privilegi
+     * a PHP, perche' il socket raw lo apre lui.
+     *
+     * Dice che la macchina e' accesa e raggiungibile, non che il servizio
+     * gira: un kernel vivo con nginx morto risponde. Per i servizi c'e' il
+     * check del loro protocollo.
+     *
+     * ponytail: un solo pacchetto, IPv4. Un pacchetto perso non basta a
+     * dichiarare giu' — ci pensano i quattro tentativi del job. Upgrade path:
+     * `-c` configurabile, e `ping6` dove serve.
+     *
+     * @throws MonitorCheckFailed
+     */
+    private function checkIcmp(Monitor $monitor): ProbeResult
+    {
+        $host = (string) $monitor->target;
+
+        // Un argomento che comincia con «-» e' un'opzione di ping, non un host.
+        if (! preg_match('/^[A-Za-z0-9][A-Za-z0-9.:-]*$/', $host)) {
+            throw new MonitorCheckFailed("ICMP — host non valido «{$host}»");
+        }
+
+        // Stessa opzione, unita' diverse: millisecondi su macOS, secondi su Linux.
+        $wait = PHP_OS_FAMILY === 'Darwin' ? $monitor->timeout_seconds * 1000 : $monitor->timeout_seconds;
+
+        $result = Process::timeout($monitor->timeout_seconds + 5)
+            ->run(['ping', '-c', '1', '-W', (string) $wait, $host]);
+
+        // 126/127: `ping` manca o non si puo' eseguire. E' questa macchina a
+        // essere rotta, non il target: un'eccezione qualunque, che
+        // `CheckMonitor::failed()` riporta senza segnare giu' niente.
+        if (in_array($result->exitCode(), [126, 127], true)) {
+            throw new RuntimeException('ping non eseguibile: '.trim($result->errorOutput()));
+        }
+
+        if (! $result->successful()) {
+            $lastLine = Str::of($result->output()."\n".$result->errorOutput())->trim()->explode("\n")->last();
+
+            throw new MonitorCheckFailed("ICMP {$host} — ".(filled($lastLine) ? trim($lastLine) : 'nessuna risposta'));
+        }
+
+        $elapsedMs = preg_match('/time[=<]([\d.]+)\s*ms/', $result->output(), $match)
+            ? (int) round((float) $match[1])
+            : null;
+
+        if ($elapsedMs !== null) {
+            $this->assertWithinThreshold($monitor, $elapsedMs, null);
+        }
+
+        return new ProbeResult($elapsedMs);
+    }
+
+    /**
+     * La connessione verso un server di posta: TLS dal primo byte o in
+     * chiaro, a seconda di `tls_mode`. Il nome atteso nel certificato e'
+     * l'host, anche quando a TLS si passa dopo, con STARTTLS.
+     *
+     * @return resource
+     *
+     * @throws MonitorCheckFailed
+     */
+    private function openMailSocket(Monitor $monitor, string $protocol, int $startedAt)
+    {
+        $host = (string) $monitor->target;
+        $scheme = $monitor->tls_mode === TlsMode::Tls ? 'tls' : 'tcp';
+
+        return $this->openSocket($protocol, "{$scheme}://{$host}:{$monitor->port}", $monitor, $startedAt, ['peer_name' => $host]);
+    }
+
+    /**
+     * Il passaggio a TLS dopo STARTTLS/STLS, con il certificato verificato:
+     * un certificato scaduto sul server di posta e' un guasto, e i client lo
+     * rifiutano come lo rifiutiamo noi.
+     *
+     * @param  resource  $socket
+     *
+     * @throws MonitorCheckFailed
+     */
+    private function startTls($socket, string $step, int $startedAt): void
+    {
+        error_clear_last();
+
+        if (@stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT) !== true) {
+            throw new MonitorCheckFailed(
+                "{$step} — handshake TLS fallito".$this->lastErrorSuffix(),
+                responseTimeMs: $this->elapsedMs($startedAt),
+            );
+        }
+    }
+
+    /**
+     * Una riga di IMAP o POP3 che deve cominciare come atteso. IMAP puo'
+     * mandare righe non taggate (`* CAPABILITY …`) prima della risposta a un
+     * comando: si saltano, tranne per il saluto, che e' lui stesso non taggato.
+     *
+     * @param  resource  $socket
+     *
+     * @throws MonitorCheckFailed
+     */
+    private function mailboxCommand($socket, string $protocol, ?string $command, string $expected, int $startedAt): void
+    {
+        if ($command !== null) {
+            fwrite($socket, "{$command}\r\n");
+        }
+
+        do {
+            $line = $this->readLine($socket);
+        } while ($line !== null && $command !== null && str_starts_with($line, '* '));
+
+        if ($line === null || ! str_starts_with($line, $expected)) {
+            $step = $command === null ? 'saluto' : Str::afterLast($command, ' ');
+
+            throw new MonitorCheckFailed(
+                "{$protocol} {$step} — ".($line ?? 'nessuna risposta').", atteso «{$expected}»",
+                responseTimeMs: $this->elapsedMs($startedAt),
+            );
+        }
     }
 
     /**
