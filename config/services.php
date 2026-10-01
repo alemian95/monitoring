@@ -36,6 +36,15 @@ return [
         'ping_url' => env('HEALTHCHECKS_PING_URL'),
     ],
 
+    /*
+     * Il webhook Discord di prima dei canali di notifica: lo legge solo la
+     * migration che lo importa come primo canale. Dopo, i canali si gestiscono
+     * dal pannello e la variabile si puo' togliere.
+     */
+    'discord' => [
+        'legacy_webhook_url' => env('DISCORD_ALERT_WEBHOOK'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

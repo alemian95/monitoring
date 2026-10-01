@@ -96,7 +96,7 @@ class CheckMonitor implements ShouldBeUnique, ShouldQueue
      * Solo un fallimento del probe (`MonitorCheckFailed` o
      * `ConnectionException`, quest'ultima per timeout/DNS lasciata propagare
      * dal probe) significa "il target è giù". Qualunque altra eccezione
-     * terminale — lock del database, un `DiscordAlert::message()` che lancia
+     * terminale — lock del database, un dispatch dell'alert che lancia
      * nel ramo di recovery, un timeout del worker, troppi tentativi — è un
      * problema di infrastruttura, non del target: non deve toccare `is_up`
      * né generare un falso allarme (seguito, al ciclo dopo, da un falso
@@ -161,6 +161,6 @@ class CheckMonitor implements ShouldBeUnique, ShouldQueue
      */
     private function alert(string $message): void
     {
-        app(AlertChannel::class)->send($message);
+        app(AlertChannel::class)->send($this->monitor, $message);
     }
 }

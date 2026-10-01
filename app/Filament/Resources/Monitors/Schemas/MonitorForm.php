@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Monitors\Schemas;
 use App\Enums\DnsRecordType;
 use App\Enums\MonitorType;
 use App\Enums\MonitorVisibility;
+use App\Models\NotificationChannel;
 use Filament\Forms\Components\KeyValue;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TagsInput;
@@ -127,6 +128,13 @@ class MonitorForm
                     ->options(MonitorVisibility::options())
                     ->default(MonitorVisibility::Private)
                     ->required(),
+                Select::make('notificationChannels')
+                    ->label('Canali di notifica')
+                    ->helperText('Dove arrivano gli alert di questo monitor. Nessuno: gli alert restano solo nei log.')
+                    ->relationship('notificationChannels', 'name')
+                    ->multiple()
+                    ->preload()
+                    ->default(fn (): array => NotificationChannel::query()->isDefault()->pluck('id')->all()),
             ]);
     }
 

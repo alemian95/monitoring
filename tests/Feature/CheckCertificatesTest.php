@@ -1,14 +1,15 @@
 <?php
 
-use App\Jobs\SendDiscordAlert;
+use App\Jobs\SendAlert;
 use App\Models\Monitor;
+use App\Models\NotificationChannel;
 use App\Support\CertificateReader;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
 
 beforeEach(function () {
     Queue::fake();
-    config(['discord-alerts.webhook_urls.default' => 'https://discord.com/api/webhooks/000/test']);
+    NotificationChannel::factory()->default()->create();
 });
 
 /**
@@ -30,7 +31,7 @@ it('allerta quando il certificato scade entro la soglia', function () {
 
     test()->artisan('monitor:certificates')->assertSuccessful();
 
-    Queue::assertPushed(SendDiscordAlert::class, 1);
+    Queue::assertPushed(SendAlert::class, 1);
 
     $monitor->refresh();
     expect($monitor->certificate_expires_at->timestamp)->toBe($expiry->timestamp)
@@ -43,7 +44,7 @@ it('registra la scadenza senza allertare quando è lontana', function () {
 
     test()->artisan('monitor:certificates')->assertSuccessful();
 
-    Queue::assertNotPushed(SendDiscordAlert::class);
+    Queue::assertNotPushed(SendAlert::class);
 
     $monitor->refresh();
     expect($monitor->certificate_expires_at)->not->toBeNull()
@@ -58,7 +59,7 @@ it('allerta una volta sola per la stessa scadenza', function () {
     test()->artisan('monitor:certificates')->assertSuccessful();
     test()->artisan('monitor:certificates')->assertSuccessful();
 
-    Queue::assertPushed(SendDiscordAlert::class, 1);
+    Queue::assertPushed(SendAlert::class, 1);
 });
 
 it('riparte da zero quando il certificato viene rinnovato', function () {
@@ -68,7 +69,7 @@ it('riparte da zero quando il certificato viene rinnovato', function () {
     test()->artisan('monitor:certificates')->assertSuccessful();
     test()->artisan('monitor:certificates')->assertSuccessful();
 
-    Queue::assertPushed(SendDiscordAlert::class, 1);
+    Queue::assertPushed(SendAlert::class, 1);
     expect($monitor->refresh()->certificate_alerted_at)->toBeNull();
 });
 
@@ -78,7 +79,7 @@ it('non allerta quando il certificato non è leggibile', function () {
 
     test()->artisan('monitor:certificates')->assertSuccessful();
 
-    Queue::assertNotPushed(SendDiscordAlert::class);
+    Queue::assertNotPushed(SendAlert::class);
     expect($monitor->refresh()->certificate_expires_at)->toBeNull();
 });
 
@@ -90,7 +91,7 @@ it('guarda solo i monitor attivi con un target https', function () {
 
     test()->artisan('monitor:certificates')->assertSuccessful();
 
-    Queue::assertNotPushed(SendDiscordAlert::class);
+    Queue::assertNotPushed(SendAlert::class);
 });
 
 // Il reader vero, non il mock. Copre solo le due uscite che non richiedono un

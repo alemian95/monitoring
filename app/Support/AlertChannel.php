@@ -2,31 +2,37 @@
 
 namespace App\Support;
 
+use App\Jobs\SendAlert;
+use App\Models\Monitor;
 use Illuminate\Support\Facades\Log;
-use Spatie\DiscordAlerts\Facades\DiscordAlert;
 
 /**
- * L'unico punto da cui esce un alert.
+ * L'unico punto da cui esce un alert: un job per ogni canale del monitor.
  *
- * Senza webhook configurato `DiscordAlert::message()` lancerebbe
- * `WebhookDoesNotExist`, facendo fallire un chiamante il cui lavoro vero — la
- * scrittura dello stato del monitor — è già andato a buon fine. La guardia
- * evita il fallimento ma non il silenzio: un webhook mancante resta visibile
- * nei log, perché in un sistema d'allerta un canale scollegato è esattamente
- * ciò che non deve passare inosservato.
+ * Un job per canale e non uno per alert, cosi' un Telegram che rifiuta il token
+ * fallisce e ritenta per conto suo senza ripetere il messaggio su Discord.
+ *
+ * Un monitor senza canali non fa fallire nulla — lo stato del monitor e' gia'
+ * scritto — ma non resta muto: in un sistema d'allerta un target che nessuno
+ * ascolta e' esattamente cio' che non deve passare inosservato.
  */
 class AlertChannel
 {
-    public function send(string $message): void
+    public function send(Monitor $monitor, string $message): void
     {
-        if (blank(config('discord-alerts.webhook_urls.default'))) {
-            Log::warning('Alert non inviato: webhook Discord non configurato.', [
+        $channels = $monitor->notificationChannels;
+
+        if ($channels->isEmpty()) {
+            Log::warning('Alert non inviato: il monitor non ha canali di notifica.', [
+                'monitor' => $monitor->name,
                 'message' => $message,
             ]);
 
             return;
         }
 
-        DiscordAlert::message($message);
+        foreach ($channels as $channel) {
+            SendAlert::dispatch($channel, $message, $monitor);
+        }
     }
 }

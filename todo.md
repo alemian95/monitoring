@@ -20,6 +20,9 @@ averli.
   alert se smettono o se dichiarano `/fail`.
 - **DNS** — il record esiste e contiene ancora il valore atteso.
 - **HTTP oltre il GET** — metodo, header cifrati a riposo, corpo.
+- **Canali di notifica** — Discord, email, webhook, Telegram, Slack
+  (e Mattermost/Rocket.Chat), Teams, ntfy, Gotify, Pushover; scelti per
+  monitor, con i predefiniti proposti sui nuovi e un pulsante di test.
 - **Pagina di stato** — una pagina per servizio, con la visibilita' decisa sul
   singolo (pannello / in chiaro / link firmato a scadenza). Fuori dal pannello
   non esiste un elenco, cosi' il link che mandi a un cliente mostra il suo
@@ -85,14 +88,14 @@ critico — e non richiede scrivere niente.
 
 ### Escalation e reperibilita'
 
-Un solo canale, Discord. Manca "se nessuno risponde in cinque minuti chiama il
-telefono", manca il turno di on-call, manca l'acknowledgement ("me ne sto
-occupando io") che zittisce i promemoria. Il re-alert orario in
-`CheckMonitor` e' escalation da poveri.
+I canali ora sono molti e si scelgono per monitor, ma partono tutti insieme.
+Manca "se nessuno risponde in cinque minuti chiama il telefono", manca il turno
+di on-call, manca l'acknowledgement ("me ne sto occupando io") che zittisce i
+promemoria. Il re-alert orario in `CheckMonitor` e' escalation da poveri.
 
-Il pezzo economico e' il secondo canale (una mail dopo N promemoria inevasi:
-Discord alle tre di notte lo silenzi, la mail resta). L'acknowledgement invece
-vuole interazione — un bot Discord — ed e' un ordine di grandezza sopra.
+Il pezzo economico e' un canale riservato ai promemoria (una mail o un ntfy ad
+alta priorita' dopo N promemoria inevasi). L'acknowledgement invece vuole
+interazione — un bot — ed e' un ordine di grandezza sopra.
 
 ### Check multi-step
 

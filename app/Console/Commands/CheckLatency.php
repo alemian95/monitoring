@@ -100,6 +100,7 @@ class CheckLatency extends Command
 
         if (Cache::add($key, true, now()->addHours(self::REALERT_AFTER_HOURS))) {
             $alerts->send(
+                $monitor,
                 "🐢 **{$monitor->name}** sta rallentando — p95 di {$current} ms nell'ultima ora, "
                 ."contro i {$baseline} ms della settimana precedente."
             );

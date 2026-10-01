@@ -65,6 +65,6 @@ class CheckCertificates extends Command
         $days = (int) now()->startOfDay()->diffInDays($expiresAt);
         $when = $days <= 0 ? 'è scaduto' : "scade fra {$days} giorni";
 
-        $alerts->send("⚠️ **{$monitor->name}** — il certificato TLS {$when} ({$expiresAt->toDateString()}) — {$monitor->target}");
+        $alerts->send($monitor, "⚠️ **{$monitor->name}** — il certificato TLS {$when} ({$expiresAt->toDateString()}) — {$monitor->target}");
     }
 }

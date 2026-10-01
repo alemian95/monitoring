@@ -1,15 +1,16 @@
 <?php
 
-use App\Jobs\SendDiscordAlert;
+use App\Jobs\SendAlert;
 use App\Models\Monitor;
 use App\Models\MonitorCheck;
+use App\Models\NotificationChannel;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 
 beforeEach(function () {
     Queue::fake();
-    config(['discord-alerts.webhook_urls.default' => 'https://discord.com/api/webhooks/000/test']);
+    NotificationChannel::factory()->default()->create();
 });
 
 /**
@@ -41,7 +42,7 @@ it('allerta quando il p95 dell ultima ora tripla la settimana precedente', funct
 
     test()->artisan('monitor:latency')->assertSuccessful();
 
-    Queue::assertPushed(SendDiscordAlert::class, 1);
+    Queue::assertPushed(SendAlert::class, 1);
     expect($monitor->fresh()->is_up)->toBeTrue();
 });
 
@@ -89,7 +90,7 @@ it('non ripete l alert a ogni giro', function () {
     test()->artisan('monitor:latency')->assertSuccessful();
     test()->artisan('monitor:latency')->assertSuccessful();
 
-    Queue::assertPushed(SendDiscordAlert::class, 1);
+    Queue::assertPushed(SendAlert::class, 1);
 });
 
 it('riapre la finestra degli alert appena i tempi rientrano', function () {

@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /*
@@ -16,4 +17,7 @@ use Tests\TestCase;
 
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
+    // Nessun test parla con un canale vero: una richiesta non simulata fallisce
+    // invece di finire su Discord o Telegram.
+    ->beforeEach(fn () => Http::preventStrayRequests())
     ->in('Feature');

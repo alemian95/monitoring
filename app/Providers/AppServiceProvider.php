@@ -27,10 +27,10 @@ class AppServiceProvider extends ServiceProvider
         // entrambi, così non e' possibile dimenticarne uno.
         DevCommands::artisan('schedule:work', 'schedule');
 
-        // Un job fallito e' il punto cieco del sistema: un `SendDiscordAlert`
+        // Un job fallito e' il punto cieco del sistema: un `SendAlert`
         // che non riesce a consegnare finisce in `failed_jobs` e li' resta,
         // perche' l'alert che dice "l'alert non e' partito" non puo' passare
-        // per Discord. Il segnale esce dall'unico canale che non dipende da
+        // dal canale che si e' rotto. Il segnale esce dall'unico canale che non dipende da
         // questa macchina.
         Queue::failing(fn () => app(Heartbeat::class)->failed());
 

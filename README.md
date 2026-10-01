@@ -1,7 +1,8 @@
 # Monitoring
 
-Controlla quattro tipi di target su un intervallo per-target e avvisa un canale
-Discord quando uno e' giu', con recovery quando torna su:
+Controlla quattro tipi di target su un intervallo per-target e avvisa i canali
+scelti per ciascuno (Discord, email, Telegram, Slack, Teams, ntfy, Gotify,
+Pushover o un webhook) quando uno e' giu', con recovery quando torna su:
 
 - **HTTP** — metodo, header e corpo a scelta; status fra quelli accettati,
   testo atteso nel corpo, tempo di risposta sotto soglia;
@@ -123,14 +124,17 @@ di lui nessun check parte.
 Serve una entry cron che invochi `php artisan schedule:run` ogni minuto: il
 queue worker lo avvia lo scheduler stesso, un minuto alla volta.
 
-Due variabili in `.env`:
+I canali di notifica si configurano dal pannello, ciascuno con il suo pulsante
+di test; quelli marcati predefiniti vengono proposti sui monitor nuovi. Per
+l'email serve il mailer di Laravel (`MAIL_*`) configurato.
 
-- `DISCORD_ALERT_WEBHOOK` — il canale dove arrivano gli alert;
+In `.env`:
+
 - `HEALTHCHECKS_PING_URL` — opzionale ma consigliata: lo scheduler la pinga a
   ogni giro riuscito e ne pinga l'endpoint `/fail` a ogni job fallito. Se i
   ping smettono è il servizio esterno (es. healthchecks.io) ad avvisare: è
   l'unico modo per accorgersi che è morto il monitoring e non i target, e
-  l'unico canale per sapere che un alert Discord non è stato consegnato.
+  l'unico canale per sapere che un alert non è stato consegnato.
 
 **Senza cron non parte niente, e in silenzio: nessun check, nessun alert,
 nessun errore visibile.**

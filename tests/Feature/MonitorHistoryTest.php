@@ -11,6 +11,7 @@ use App\Filament\Widgets\UptimeOverview;
 use App\Jobs\CheckMonitor;
 use App\Models\Monitor;
 use App\Models\MonitorCheck;
+use App\Models\NotificationChannel;
 use App\Models\User;
 use App\Support\MonitorProbe;
 use App\Support\ProbeResult;
@@ -20,7 +21,7 @@ use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
 beforeEach(function () {
-    config(['discord-alerts.webhook_urls.default' => 'https://discord.com/api/webhooks/000/test']);
+    NotificationChannel::factory()->default()->create();
     Queue::fake();
 });
 

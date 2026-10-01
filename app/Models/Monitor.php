@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -36,6 +37,21 @@ class Monitor extends Model
         static::creating(function (self $monitor): void {
             $monitor->ping_token ??= Str::random(40);
         });
+
+        // Qui e non nel form, cosi' vale per ogni via da cui nasce un monitor.
+        // Il form li mostra gia' selezionati e, al salvataggio, sincronizza
+        // la scelta dell'utente sopra questa.
+        static::created(function (self $monitor): void {
+            $monitor->notificationChannels()->attach(NotificationChannel::query()->isDefault()->pluck('id'));
+        });
+    }
+
+    /**
+     * @return BelongsToMany<NotificationChannel, $this>
+     */
+    public function notificationChannels(): BelongsToMany
+    {
+        return $this->belongsToMany(NotificationChannel::class);
     }
 
     /**
